@@ -1,0 +1,88 @@
+{
+  "status": "passed",
+  "image": "sha256:219c8b28a5a784799937cef543ccd51e0a30d3b52203c419bdecf2768d732a79",
+  "docker_context": "colima-autorca",
+  "plan_hash": "9691b1744847530be7a59db0b983cbc549dc6da57c1d06291f2958f84980d81b",
+  "before_after": {
+    "before": {
+      "phase": "before",
+      "status": "failed",
+      "exit_code": 1,
+      "output": "test_full_discount (test_checkout.DiscountTests.test_full_discount) ... FAIL\ntest_invalid_inputs (test_checkout.DiscountTests.test_invalid_inputs) ... ERROR\ntest_percentage_discount (test_checkout.DiscountTests.test_percentage_discount) ... FAIL\ntest_zero_discount (test_checkout.DiscountTests.test_zero_discount) ... ERROR\ntest_memory_and_process_limits (test_isolation.IsolationTests.test_memory_and_process_limits) ... ok\ntest_no_application_credentials (test_isolation.IsolationTests.test_no_application_credentials) ... ok\ntest_no_capabilities (test_isolation.IsolationTests.test_no_capabilities) ... ok\ntest_no_docker_socket (test_isolation.IsolationTests.test_no_docker_socket) ... ok\ntest_no_network (test_isolation.IsolationTests.test_no_network) ... ok\ntest_non_root (test_isolation.IsolationTests.test_non_root) ... ok\ntest_root_is_read_only (test_isolation.IsolationTests.test_root_is_read_only) ... ok\n\n======================================================================\nERROR: test_invalid_inputs (test_checkout.DiscountTests.test_invalid_inputs)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/workspace/test_checkout.py\", line 17, in test_invalid_inputs\n    calculate_discount(price, discount)\n  File \"/workspace/checkout.py\", line 3, in calculate_discount\n    return price / discount\n           ~~~~~~^~~~~~~~~~\nZeroDivisionError: division by zero\n\n======================================================================\nERROR: test_zero_discount (test_checkout.DiscountTests.test_zero_discount)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/workspace/test_checkout.py\", line 6, in test_zero_discount\n    self.assertEqual(calculate_discount(100, 0), 100)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/checkout.py\", line 3, in calculate_discount\n    return price / discount\n           ~~~~~~^~~~~~~~~~\nZeroDivisionError: division by zero\n\n======================================================================\nFAIL: test_full_discount (test_checkout.DiscountTests.test_full_discount)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/workspace/test_checkout.py\", line 12, in test_full_discount\n    self.assertEqual(calculate_discount(100, 100), 0)\nAssertionError: 1.0 != 0\n\n======================================================================\nFAIL: test_percentage_discount (test_checkout.DiscountTests.test_percentage_discount)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/workspace/test_checkout.py\", line 9, in test_percentage_discount\n    self.assertEqual(calculate_discount(100, 20), 80)\nAssertionError: 5.0 != 80\n\n----------------------------------------------------------------------\nRan 11 tests in 0.001s\n\nFAILED (failures=2, errors=2)\nAUTORCA_UNITTEST_SUMMARY={\"discovered\": 11, \"run\": 11, \"failures\": 2, \"errors\": 2, \"skipped\": 0}\n",
+      "container": "autorca-test-a9805e32-d189-4bad-a157-29523aa899e9-before",
+      "timed_out": false,
+      "output_limited": false,
+      "cleanup_succeeded": true,
+      "duration_seconds": 0.493
+    },
+    "after": {
+      "phase": "after",
+      "status": "passed",
+      "exit_code": 0,
+      "output": "test_full_discount (test_checkout.DiscountTests.test_full_discount) ... ok\ntest_invalid_inputs (test_checkout.DiscountTests.test_invalid_inputs) ... ok\ntest_percentage_discount (test_checkout.DiscountTests.test_percentage_discount) ... ok\ntest_zero_discount (test_checkout.DiscountTests.test_zero_discount) ... ok\ntest_memory_and_process_limits (test_isolation.IsolationTests.test_memory_and_process_limits) ... ok\ntest_no_application_credentials (test_isolation.IsolationTests.test_no_application_credentials) ... ok\ntest_no_capabilities (test_isolation.IsolationTests.test_no_capabilities) ... ok\ntest_no_docker_socket (test_isolation.IsolationTests.test_no_docker_socket) ... ok\ntest_no_network (test_isolation.IsolationTests.test_no_network) ... ok\ntest_non_root (test_isolation.IsolationTests.test_non_root) ... ok\ntest_root_is_read_only (test_isolation.IsolationTests.test_root_is_read_only) ... ok\n\n----------------------------------------------------------------------\nRan 11 tests in 0.001s\n\nOK\nAUTORCA_UNITTEST_SUMMARY={\"discovered\": 11, \"run\": 11, \"failures\": 0, \"errors\": 0, \"skipped\": 0}\n",
+      "container": "autorca-test-a9805e32-d189-4bad-a157-29523aa899e9-after",
+      "timed_out": false,
+      "output_limited": false,
+      "cleanup_succeeded": true,
+      "duration_seconds": 0.425
+    },
+    "policy": {
+      "version": 1,
+      "image": "sha256:219c8b28a5a784799937cef543ccd51e0a30d3b52203c419bdecf2768d732a79",
+      "docker_context": "colima-autorca",
+      "profile": "python-unittest",
+      "command": [
+        "python",
+        "-I",
+        "-B",
+        "/opt/autorca/bootstrap.py"
+      ],
+      "network": "none",
+      "user": "65534:65534",
+      "read_only_root": true,
+      "memory_mb": 256,
+      "cpus": 0.5,
+      "pids": 32,
+      "output_limit_bytes": 65536,
+      "timeout_seconds": 10,
+      "mounts": "No host mounts; /workspace and /tmp are bounded ephemeral tmpfs."
+    },
+    "interpretation": "Container exit status is measured. Repository test output and counts are untrusted evidence, not proof of correctness or coverage."
+  },
+  "timeout": {
+    "phase": "before",
+    "status": "error",
+    "exit_code": null,
+    "container": "autorca-test-d248b563-9772-480b-b081-5e7946989735-before",
+    "timed_out": true,
+    "output_limited": false,
+    "cleanup_succeeded": true,
+    "duration_seconds": 5.138
+  },
+  "output_limit": {
+    "phase": "before",
+    "status": "error",
+    "exit_code": null,
+    "container": "autorca-test-820db286-40c2-4a91-aefd-52349107f9a0-before",
+    "timed_out": false,
+    "output_limited": true,
+    "cleanup_succeeded": true,
+    "duration_seconds": 0.359
+  },
+  "checks": [
+    "API plan and one-use authorization",
+    "Original regression fails",
+    "Patched suite passes",
+    "Non-root UID",
+    "No external network",
+    "Read-only root",
+    "No application credentials",
+    "No Docker socket",
+    "No Linux capabilities",
+    "Enforced memory and PID limits",
+    "Timeout enforced",
+    "Output bounded",
+    "Containers removed",
+    "Approval after validation"
+  ]
+}

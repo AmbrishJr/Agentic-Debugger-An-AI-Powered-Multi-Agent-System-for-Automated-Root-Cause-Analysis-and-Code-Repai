@@ -1,0 +1,16 @@
+.env
+.env.local
+**/.env.local
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/node_modules/
+**/.next/
+**/tsconfig.tsbuildinfo
+**/test-results/
+**/playwright-report/
+data/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store

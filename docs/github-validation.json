@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "scope": "Real app approval and GitHub REST flow with a deterministic fixture; not an LLM investigation.",
+  "repository": "AmbrishJr/autorca-x-validation-6ff238177e55",
+  "repository_url": "https://github.com/AmbrishJr/autorca-x-validation-6ff238177e55",
+  "private": true,
+  "pull_request_url": "https://github.com/AmbrishJr/autorca-x-validation-6ff238177e55/pull/1",
+  "checks": [
+    "Approval gate",
+    "Explicit PR authorization",
+    "Private repository",
+    "Draft PR",
+    "Exactly one changed file",
+    "Patched content matches reviewed proposal",
+    "Base unchanged",
+    "Retry returns same PR"
+  ],
+  "head_sha": "13ebedb855de077e1b41f2db479c20d9c31230b0",
+  "base_branch": "main",
+  "cleanup": "Private repository and draft PR retained for inspection; no merge or deployment."
+}

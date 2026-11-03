@@ -1,0 +1,27 @@
+import os
+import tempfile
+from pathlib import Path
+import pytest
+
+# Isolate tests from the user's database and any real credentials.
+_temporary = tempfile.TemporaryDirectory(prefix='autorca-tests-')
+os.environ['DATABASE_URL'] = 'sqlite:///' + str(Path(_temporary.name) / 'tests.db')
+os.environ['OPENAI_API_KEY'] = ''
+os.environ['GITHUB_TOKEN'] = ''
+os.environ['AUTORCA_API_TOKEN'] = ''
+os.environ['REPOSITORY_ROOT'] = ''
+os.environ['SANDBOX_ENABLED'] = 'false'
+
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+from app.main import app
+from app.db.session import engine
+
+
+@pytest.fixture
+def client():
+    with TestClient(app) as client:
+        with engine.begin() as connection:
+            for table in ('memory_fts', 'incident_memory', 'agent_executions', 'validation_runs', 'proposed_fixes', 'investigations', 'incidents', 'app_preferences'):
+                connection.execute(text(f'DELETE FROM {table}'))
+        yield client
