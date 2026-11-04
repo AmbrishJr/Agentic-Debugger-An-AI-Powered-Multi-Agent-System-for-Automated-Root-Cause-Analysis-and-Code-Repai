@@ -22,6 +22,13 @@ def main():
         destination.write_text(content, encoding='utf-8')
     os.chdir('/workspace')
     sys.path.insert(0, '/workspace')
+    profile = sys.argv[1] if len(sys.argv) > 1 else 'python-unittest'
+    if profile == 'python-pytest':
+        os.environ['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'
+        import pytest
+        return int(pytest.main(['-q', '-p', 'no:cacheprovider', '/workspace']))
+    if profile != 'python-unittest':
+        raise ValueError('Unsupported test profile')
     suite = unittest.defaultTestLoader.discover('/workspace', pattern='test*.py')
     count = suite.countTestCases()
     if count == 0:

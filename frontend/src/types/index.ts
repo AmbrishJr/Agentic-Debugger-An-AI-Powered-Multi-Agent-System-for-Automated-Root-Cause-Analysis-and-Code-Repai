@@ -39,6 +39,12 @@ export type Validation = {
   };
 };
 export type Fix = {
+  files: {
+    path: string;
+    original_code: string;
+    proposed_code: string;
+    diff: string;
+  }[];
   id: string;
   path: string;
   original_code: string;
@@ -83,11 +89,28 @@ export type Results = {
   fix?: { available: boolean; reason?: string };
 };
 export type Detail = Incident & {
+  jobs: {
+    id: string;
+    kind: string;
+    status: string;
+    attempts: number;
+    cancel_requested: boolean;
+    error: string | null;
+  }[];
+  audit: {
+    id: string;
+    action: string;
+    actor: string;
+    note: string;
+    evidence: string;
+    created_at: string;
+  }[];
   investigation: { agent_status: string; analysis_results: Results } | null;
   executions: Execution[];
   fix: Fix | null;
 };
 export type Settings = {
+  retrieval_mode: "keyword" | "hybrid";
   model: string;
   retrieval_limit: number;
   max_evidence_files: number;

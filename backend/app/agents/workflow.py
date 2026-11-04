@@ -8,11 +8,12 @@ from app.db.session import SessionLocal
 from app.models.records import Incident, Investigation, AgentExecution, ProposedFix, now
 from app.schemas.contracts import Triage, Evidence, Analysis, FixSuggestion, ReportNarrative
 from app.services import llm
-from app.services.memory import FTSRetriever, remember
+from app.services.memory import FTSRetriever, HybridRetriever, remember
 from app.services.security import read_source, list_files, digest, redact
 from app.services.sample import BUGGY, FIXED, SAMPLE_LOG
 from app.services.validation import validate
 from app.services.patches import unified_patch
+from app.services.jobs import checkpoint, JobCancelled
 
 AGENTS = ['triage', 'evidence', 'memory', 'analysis', 'fix', 'validation', 'report']
 
@@ -20,6 +21,7 @@ AGENTS = ['triage', 'evidence', 'memory', 'analysis', 'fix', 'validation', 'repo
 class WorkflowState(TypedDict, total=False):
     incident_id: str
     investigation_id: str
+    job_id: str
     mode: str
     repository: str
     error_log: str
@@ -74,7 +76,7 @@ def evidence(state):
 
 def memory(state):
     with SessionLocal() as db:
-        return FTSRetriever(db).search(state.get('triage', {}).get('exception', '') + ' ' + state['error_log'][:1500],
+        return (HybridRetriever(db) if state['config'].get('retrieval_mode') == 'hybrid' else FTSRetriever(db)).search(state.get('triage', {}).get('exception', '') + ' ' + state['error_log'][:1500],
                                        state['incident_id'], state['config']['retrieval_limit'])
 
 
@@ -110,6 +112,12 @@ def analysis(state):
 
 
 def fix(state):
+    with SessionLocal() as db:
+        saved = db.scalar(select(ProposedFix).where(ProposedFix.incident_id == state['incident_id']))
+        if saved and saved.validation_result.get('status') != 'regenerate':
+            return {'available': True, 'id': saved.id, 'path': saved.path, 'proposed_code': saved.proposed_code,
+                    'explanation': saved.explanation, 'risks': saved.risks, 'diff': saved.proposed_patch,
+                    'original_code': saved.original_code, 'original_sha256': saved.original_sha256, 'files': saved.files}
     if not state.get('analysis') or any(e['agent'] in ('triage', 'evidence', 'analysis') for e in state.get('errors', [])):
         return {'available': False, 'reason': 'Required evidence or analysis is incomplete.'}
     if state['mode'] == 'demo':
@@ -119,36 +127,56 @@ def fix(state):
             explanation='Apply the documented percentage contract and guard invalid price and discount ranges.',
             risks=['Changes the incorrect output for all nonzero discounts.', 'Floating-point currency arithmetic is still used; consider Decimal in a separate change.']).model_dump()
     else:
-        suggestion = llm.generate(FixSuggestion, 'Propose a minimal fix to one provided source file. Return its complete updated contents. Use an empty path if no safe fix can be supported.',
+        suggestion = llm.generate(FixSuggestion, 'Propose a minimal fix to at most five collected source files. Return complete updated contents in files. Also set path and proposed_code to the first file for compatibility. Use empty files and an empty path if no safe fix is supported.',
                                   {'analysis': state['analysis'], 'evidence': state.get('evidence', [])}, state['config']['model'])
         if not suggestion['path']:
             return {'available': False, 'reason': suggestion['explanation']}
-    matching = next((e for e in state.get('evidence', []) if e['kind'] == 'source' and e['path'] == suggestion['path']), None)
-    if not matching:
-        raise ValueError('Proposed path is not a collected source file.')
-    original = read_source(state['repository'], suggestion['path'])
-    if digest(original) != matching['sha256']:
-        raise ValueError('Source changed after evidence collection. Start a new investigation.')
-    if redact(original) != original or redact(suggestion['proposed_code']) != suggestion['proposed_code']:
-        raise ValueError('Secret-like content prevents safe patch generation for this file.')
-    proposed = suggestion['proposed_code']
-    if original == proposed:
+    files = []
+    changes = suggestion.get('files') or [{'path': suggestion['path'], 'proposed_code': suggestion['proposed_code']}]
+    if len({c['path'] for c in changes}) != len(changes):
+        raise ValueError('Duplicate patch targets are not allowed.')
+    for change in changes:
+        matching = next((e for e in state.get('evidence', []) if e['kind'] == 'source' and e['path'] == change['path']), None)
+        if not matching:
+            raise ValueError('Proposed path is not a collected source file.')
+        original = read_source(state['repository'], change['path'])
+        proposed = change['proposed_code']
+        if digest(original) != matching['sha256']:
+            raise ValueError('Source changed after evidence collection. Start a new investigation.')
+        if redact(original) != original or redact(proposed) != proposed:
+            raise ValueError('Secret-like content prevents safe patch generation for this file.')
+        if original != proposed:
+            files.append({**change, 'original_code': original, 'original_sha256': digest(original),
+                          'diff': unified_patch(change['path'], original, proposed)})
+    if not files:
         return {'available': False, 'reason': 'No code change proposed.'}
-    patch = unified_patch(suggestion['path'], original, proposed)
+    first = files[0]
+    patch = ''.join(f['diff'] for f in files)
+    suggestion.update(path=first['path'], proposed_code=first['proposed_code'], files=files)
     with SessionLocal() as db:
-        record = ProposedFix(incident_id=state['incident_id'], path=suggestion['path'], original_code=original,
-            proposed_code=proposed, original_sha256=digest(original), proposed_patch=patch,
-            explanation=suggestion['explanation'], risks=suggestion['risks'])
+        record = db.scalar(select(ProposedFix).where(ProposedFix.incident_id == state['incident_id']))
+        if not record:
+            record = ProposedFix(incident_id=state['incident_id'])
+        for key, value in dict(path=first['path'], original_code=first['original_code'], proposed_code=first['proposed_code'],
+            original_sha256=first['original_sha256'], proposed_patch=patch, explanation=suggestion['explanation'],
+            risks=suggestion['risks'], files=files, validation_result={}).items():
+            setattr(record, key, value)
         db.add(record)
         db.commit()
-        return {'available': True, 'id': record.id, **suggestion, 'diff': patch, 'original_code': original, 'original_sha256': record.original_sha256}
+        return {'available': True, 'id': record.id, **suggestion, 'diff': patch, 'original_code': first['original_code'], 'original_sha256': record.original_sha256}
 
 
 def validation(state):
     proposed = state.get('fix', {})
     if not proposed.get('available'):
         return {'status': 'skipped', 'checks': [], 'limitations': 'No proposed fix is available.'}
-    result = validate(state['repository'], proposed['path'], proposed['original_sha256'], proposed['proposed_code'], state['mode'])
+    files = proposed.get('files') or [proposed]
+    results = [validate(state['repository'], f['path'], f['original_sha256'], f['proposed_code'], state['mode']) for f in files]
+    result = results[0]
+    if len(results) > 1:
+        result = {**result, 'checks': [{**c, 'detail': f['path'] + ': ' + c['detail']} for f, r in zip(files, results) for c in r['checks']],
+                  'status': 'failed' if any(r['status'] == 'failed' for r in results) else ('partial' if any(r['status'] == 'partial' for r in results) else 'passed')}
+
     with SessionLocal() as db:
         record = db.get(ProposedFix, proposed['id'])
         record.validation_result = result
@@ -173,6 +201,9 @@ def report(state):
 
 def tracked(name, function):
     def node(state):
+        checkpoint(state.get('job_id'))
+        if name in state:
+            return {}  # Reuse durable completed steps after restart/retry.
         started = time.monotonic()
         with SessionLocal() as db:
             execution = AgentExecution(investigation_id=state['investigation_id'], agent_name=name)
@@ -206,6 +237,7 @@ def tracked(name, function):
             if name == 'analysis' and not error:
                 inv.root_cause_summary = output['summary']
             db.commit()
+        checkpoint(state.get('job_id'))
         return updates
     return node
 
@@ -220,13 +252,14 @@ builder.add_edge(AGENTS[-1] + '_agent', END)
 graph = builder.compile()
 
 
-def run_investigation(incident_id: str):
+def run_investigation(incident_id: str, job_id: str = ''):
     with SessionLocal() as db:
         incident = db.get(Incident, incident_id)
         inv = db.scalar(select(Investigation).where(Investigation.incident_id == incident_id))
-        state = WorkflowState(incident_id=incident_id, investigation_id=inv.id, mode=incident.mode,
+        state = WorkflowState(incident_id=incident_id, investigation_id=inv.id, job_id=job_id, mode=incident.mode,
             repository=incident.repository, error_log=incident.error_log, selected_files=incident.selected_files,
             config=inv.config, errors=[])
+        state.update({k: v for k, v in inv.analysis_results.items() if k in AGENTS or k == 'errors'})
     try:
         result = graph.invoke(state)
         with SessionLocal() as db:
@@ -239,6 +272,8 @@ def run_investigation(incident_id: str):
             if result.get('analysis') and not result.get('errors') and has_fix:
                 remember(db, incident, result['analysis'], result.get('triage', {}))
             db.commit()
+    except JobCancelled:
+        raise
     except Exception:
         with SessionLocal() as db:
             incident = db.get(Incident, incident_id)

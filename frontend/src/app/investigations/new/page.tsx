@@ -15,9 +15,11 @@ import { api, post } from "@/lib/api";
 import { Incident, Settings } from "@/types";
 import { Button } from "@/components/ui/button";
 import { ErrorBox } from "@/components/common";
+import { useAuth } from "@/components/auth";
 
 type Sample = { title: string; error_log: string };
 export default function NewInvestigation() {
+  const { user } = useAuth();
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [log, setLog] = useState("");
@@ -67,6 +69,7 @@ export default function NewInvestigation() {
     onSuccess: (incident) =>
       router.push(`/investigations/${incident.id}?start=1`),
   });
+  if (user?.role === "viewer") return <div className="panel panel-body"><h1>Read-only access</h1><p>An editor or administrator can start investigations. You can browse existing incidents and reports.</p></div>;
   return (
     <>
       <div className="page-heading">

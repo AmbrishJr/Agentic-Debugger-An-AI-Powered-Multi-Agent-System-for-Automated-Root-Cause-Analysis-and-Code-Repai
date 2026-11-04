@@ -1,5 +1,6 @@
 # Trusted infrastructure image: never build a repository-provided Dockerfile.
 FROM python:3.12-slim
+RUN pip install --no-cache-dir pytest==8.3.5
 COPY bootstrap.py /opt/autorca/bootstrap.py
 RUN chmod 0555 /opt/autorca/bootstrap.py
 USER 65534:65534

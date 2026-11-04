@@ -31,6 +31,10 @@ async function proxy(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
+  for (const name of ["cookie", "x-csrf-token"]) {
+    const value = request.headers.get(name);
+    if (value) headers[name] = value;
+  }
   if (process.env.AUTORCA_API_TOKEN)
     headers["X-AutoRCA-Token"] = process.env.AUTORCA_API_TOKEN;
   try {
@@ -70,14 +74,17 @@ async function proxy(
         signal: request.signal,
       },
     );
+    const responseHeaders = new Headers({
+      "Content-Type":
+        upstream.headers.get("content-type") || "application/json",
+      "Cache-Control": "no-store",
+      "X-Accel-Buffering": "no",
+    });
+    for (const cookie of upstream.headers.getSetCookie())
+      responseHeaders.append("Set-Cookie", cookie);
     return new Response(upstream.body, {
       status: upstream.status,
-      headers: {
-        "Content-Type":
-          upstream.headers.get("content-type") || "application/json",
-        "Cache-Control": "no-store",
-        "X-Accel-Buffering": "no",
-      },
+      headers: responseHeaders,
     });
   } catch {
     return Response.json(

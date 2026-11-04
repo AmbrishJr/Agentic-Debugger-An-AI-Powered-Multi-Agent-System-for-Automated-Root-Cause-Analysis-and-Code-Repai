@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Badge, ErrorBox, Loading, ValidationPanel } from "@/components/common";
 import { date } from "@/lib/utils";
 import { IsolatedValidation } from "@/components/isolated-validation";
+import { Lifecycle } from "@/components/lifecycle";
+import { useAuth } from "@/components/auth";
 
 export default function Review({
   params,
@@ -26,8 +28,10 @@ export default function Review({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const { user } = useAuth();
   const { data, error, isPending } = useIncident(id);
   const client = useQueryClient();
+  const [fileIndex, setFileIndex] = useState(0);
   const [note, setNote] = useState("");
   const [view, setView] = useState<"unified" | "split">("unified");
   const [authorized, setAuthorized] = useState(false);
@@ -66,7 +70,11 @@ export default function Review({
         </div>
       </>
     );
-  const pending = fix.approval_status === "pending";
+  const selectedFile = fix.files?.[fileIndex] || {
+    ...fix,
+    diff: fix.proposed_patch,
+  };
+  const pending = fix.approval_status === "pending" && user?.role !== "viewer";
   const canApprove =
     ["passed", "partial"].includes(fix.validation_result.status) &&
     ["awaiting_review", "partial"].includes(data.status);
@@ -95,11 +103,21 @@ export default function Review({
             <div className="panel-heading">
               <div className="file-heading">
                 <FileCode2 size={18} />
-                <h2>{fix.path}</h2>
+                <select
+                  aria-label="Patch file"
+                  value={fileIndex}
+                  onChange={(e) => setFileIndex(Number(e.target.value))}
+                >
+                  {(fix.files?.length ? fix.files : [fix]).map((f, i) => (
+                    <option key={f.path} value={i}>
+                      {f.path}
+                    </option>
+                  ))}
+                </select>
                 <span className="diff-stat">
                   +
                   {
-                    fix.proposed_patch
+                    selectedFile.diff
                       .split("\n")
                       .filter((l) => l.startsWith("+") && !l.startsWith("+++"))
                       .length
@@ -107,7 +125,7 @@ export default function Review({
                   <i>
                     −
                     {
-                      fix.proposed_patch
+                      selectedFile.diff
                         .split("\n")
                         .filter(
                           (l) => l.startsWith("-") && !l.startsWith("---"),
@@ -133,7 +151,7 @@ export default function Review({
             </div>
             {view === "unified" ? (
               <pre className="diff-code" aria-label="Proposed unified diff">
-                {fix.proposed_patch.split("\n").map((line, i) => (
+                {selectedFile.diff.split("\n").map((line, i) => (
                   <span
                     className={
                       line.startsWith("@@")
@@ -156,11 +174,11 @@ export default function Review({
               <div className="split-diff">
                 <div>
                   <h3>Original code</h3>
-                  <pre>{fix.original_code}</pre>
+                  <pre>{selectedFile.original_code}</pre>
                 </div>
                 <div>
                   <h3>Proposed code</h3>
-                  <pre>{fix.proposed_code}</pre>
+                  <pre>{selectedFile.proposed_code}</pre>
                 </div>
               </div>
             )}
@@ -186,6 +204,7 @@ export default function Review({
           </section>
         </div>
         <aside>
+          <Lifecycle data={data} />
           <section className="panel decision-panel">
             <div className="panel-heading">
               <div>
@@ -239,6 +258,8 @@ export default function Review({
                     </p>
                   )}
                 </>
+              ) : fix.approval_status === "pending" ? (
+                <p>Viewer access. An editor or administrator must review this proposal.</p>
               ) : (
                 <>
                   <div className="decision-saved">
@@ -266,7 +287,7 @@ export default function Review({
               </Button>
             </div>
           </section>
-          {fix.approval_status === "approved" && (
+          {fix.approval_status === "approved" && user?.role !== "viewer" && (
             <section className="panel github-panel">
               <div className="panel-heading">
                 <h2>Draft pull request</h2>

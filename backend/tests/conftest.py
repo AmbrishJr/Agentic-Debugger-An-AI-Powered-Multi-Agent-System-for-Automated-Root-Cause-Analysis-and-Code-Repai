@@ -11,6 +11,8 @@ os.environ['GITHUB_TOKEN'] = ''
 os.environ['AUTORCA_API_TOKEN'] = ''
 os.environ['REPOSITORY_ROOT'] = ''
 os.environ['SANDBOX_ENABLED'] = 'false'
+os.environ['AUTH_ENABLED'] = 'false'
+os.environ['JOB_EXECUTION'] = 'inline'
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -22,6 +24,6 @@ from app.db.session import engine
 def client():
     with TestClient(app) as client:
         with engine.begin() as connection:
-            for table in ('memory_fts', 'incident_memory', 'agent_executions', 'validation_runs', 'proposed_fixes', 'investigations', 'incidents', 'app_preferences'):
+            for table in ('auth_sessions', 'users', 'login_throttles', 'jobs', 'worker_state', 'incident_events', 'memory_fts', 'incident_memory', 'agent_executions', 'validation_runs', 'proposed_fixes', 'investigations', 'incidents', 'app_preferences'):
                 connection.execute(text(f'DELETE FROM {table}'))
         yield client

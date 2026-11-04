@@ -55,9 +55,13 @@ class Analysis(StrictModel):
     summary: str
 
 
-class FixSuggestion(StrictModel):
+class FileChange(StrictModel):
     path: str
     proposed_code: str = Field(max_length=80000)
+
+
+class FixSuggestion(FileChange):
+    files: list[FileChange] = Field(default_factory=list, max_length=5)
     explanation: str
     risks: list[str]
 
@@ -72,7 +76,17 @@ class Decision(StrictModel):
     note: str = Field(default='', max_length=2000)
 
 
+class Resolution(StrictModel):
+    note: str = Field(min_length=10, max_length=2000)
+    evidence: str = Field(min_length=10, max_length=2000)
+
+
+class Reopen(StrictModel):
+    note: str = Field(min_length=10, max_length=2000)
+
+
 class Preferences(StrictModel):
+    retrieval_mode: Literal['keyword', 'hybrid'] = 'hybrid'
     model: str = Field(default='gpt-4.1-mini', pattern=r'^[a-zA-Z0-9._:-]{1,100}$')
     retrieval_limit: int = Field(default=5, ge=1, le=10)
     max_evidence_files: int = Field(default=5, ge=1, le=10)
@@ -85,6 +99,7 @@ class PullRequestRequest(StrictModel):
 
 class ValidationPlanRequest(StrictModel):
     files: list[str] = Field(min_length=1, max_length=32)
+    profile: Literal['python-unittest', 'python-pytest'] = 'python-unittest'
 
 
 class ValidationAuthorization(StrictModel):

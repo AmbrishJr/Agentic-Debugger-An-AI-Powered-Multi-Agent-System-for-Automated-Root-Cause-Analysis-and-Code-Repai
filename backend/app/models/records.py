@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, ForeignKey, JSON, Float
+from sqlalchemy import String, Text, ForeignKey, JSON, Float, Boolean, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.session import Base
 
@@ -25,6 +25,10 @@ class Incident(Base):
     selected_files: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[str] = mapped_column(String, default=now, index=True)
     updated_at: Mapped[str] = mapped_column(String, default=now)
+    resolution_note: Mapped[str] = mapped_column(Text, default='')
+    resolution_evidence: Mapped[str] = mapped_column(Text, default='')
+    resolved_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class Investigation(Base):
@@ -55,6 +59,7 @@ class ProposedFix(Base):
     decided_at: Mapped[str | None] = mapped_column(String, nullable=True)
     pr_url: Mapped[str | None] = mapped_column(String, nullable=True)
     pr_status: Mapped[str] = mapped_column(String, default='none')
+    files: Mapped[list] = mapped_column(JSON, default=list)
 
 
 class AgentExecution(Base):
@@ -101,3 +106,60 @@ class ValidationRun(Base):
     authorized_at: Mapped[str | None] = mapped_column(String, nullable=True)
     finished_at: Mapped[str | None] = mapped_column(String, nullable=True)
     result: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class User(Base):
+    __tablename__ = 'users'
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    username: Mapped[str] = mapped_column(String, unique=True)
+    password_hash: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(String, default='viewer')
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class AuthSession(Base):
+    __tablename__ = 'auth_sessions'
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), index=True)
+    csrf_token: Mapped[str] = mapped_column(String)
+    expires_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class LoginThrottle(Base):
+    __tablename__ = 'login_throttles'
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[str] = mapped_column(String)
+
+
+class IncidentEvent(Base):
+    __tablename__ = 'incident_events'
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    incident_id: Mapped[str] = mapped_column(ForeignKey('incidents.id'), index=True)
+    action: Mapped[str] = mapped_column(String)
+    actor: Mapped[str] = mapped_column(String)
+    note: Mapped[str] = mapped_column(Text, default='')
+    evidence: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class Job(Base):
+    __tablename__ = 'jobs'
+    __table_args__ = (UniqueConstraint('kind', 'target_id'),)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    kind: Mapped[str] = mapped_column(String)
+    target_id: Mapped[str] = mapped_column(String)
+    incident_id: Mapped[str] = mapped_column(ForeignKey('incidents.id'), index=True)
+    status: Mapped[str] = mapped_column(String, default='queued', index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, default=now)
+    updated_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class WorkerState(Base):
+    __tablename__ = 'worker_state'
+    id: Mapped[str] = mapped_column(String, primary_key=True, default='default')
+    heartbeat_at: Mapped[str] = mapped_column(String, default=now)

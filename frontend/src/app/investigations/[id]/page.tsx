@@ -22,6 +22,8 @@ import { post } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge, ErrorBox, Loading, ValidationPanel } from "@/components/common";
 import { date, label } from "@/lib/utils";
+import { Lifecycle } from "@/components/lifecycle";
+import { useAuth } from "@/components/auth";
 
 const agents = [
   ["triage", "Triage", "Understand the failure"],
@@ -38,6 +40,7 @@ export default function Investigation({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const { user } = useAuth();
   const { data, error, isPending } = useIncident(id);
   const client = useQueryClient();
   const started = useRef(false);
@@ -48,6 +51,7 @@ export default function Investigation({
   useEffect(() => {
     if (
       data?.status === "submitted" &&
+      user?.role !== "viewer" &&
       !started.current &&
       new URLSearchParams(window.location.search).has("start")
     ) {
@@ -59,9 +63,11 @@ export default function Investigation({
   if (!data) return <ErrorBox error={error} />;
   const results = data.investigation?.analysis_results;
   const report = results?.report;
-  const completed = data.executions.filter(
-    (e) => e.execution_status === "completed",
-  ).length;
+  const completed = new Set(
+    data.executions
+      .filter((e) => e.execution_status === "completed")
+      .map((e) => e.agent_name),
+  ).size;
   return (
     <>
       <Link href="/history" className="back-link">
@@ -101,7 +107,7 @@ export default function Investigation({
               </Link>
             </Button>
           )}
-          {data.status === "submitted" && (
+          {data.status === "submitted" && user?.role !== "viewer" && (
             <Button onClick={() => start.mutate()} disabled={start.isPending}>
               <Play size={15} /> Run investigation
             </Button>
@@ -121,8 +127,9 @@ export default function Investigation({
       {["partial", "failed"].includes(data.status) && (
         <div className="error-box" role="alert">
           The investigation did not fully complete. Available results are
-          preserved below. Review failed agent details and submit a new incident
-          after correcting configuration.
+          preserved below. Review failed agent details, correct the
+          configuration, then retry incomplete steps using the lifecycle
+          controls.
         </div>
       )}
       <div className="investigation-layout">
@@ -136,9 +143,9 @@ export default function Investigation({
           </div>
           <div className="agent-list">
             {agents.map(([key, title, description], i) => {
-              const execution = data.executions.find(
-                (e) => e.agent_name === key,
-              );
+              const execution = [...data.executions]
+                .reverse()
+                .find((e) => e.agent_name === key);
               return (
                 <details
                   key={key}
@@ -195,6 +202,7 @@ export default function Investigation({
           </div>
         </aside>
         <div className="investigation-main">
+          <Lifecycle data={data} />
           <section className="panel summary-panel">
             <div className="panel-heading">
               <div>
@@ -309,7 +317,7 @@ export default function Investigation({
               <div className="panel-heading">
                 <div>
                   <h2>Historical context</h2>
-                  <p>Keyword retrieval · past hypotheses are not proof</p>
+                  <p>Past incidents · hypotheses are not proof</p>
                 </div>
               </div>
               <div className="panel-body">

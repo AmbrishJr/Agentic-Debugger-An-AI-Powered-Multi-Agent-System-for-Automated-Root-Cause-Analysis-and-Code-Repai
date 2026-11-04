@@ -94,6 +94,7 @@ export default function IncidentHistory() {
               "partial",
               "failed",
               "needs_evidence",
+              "resolved", "reopened", "cancelled",
             ].map((s) => (
               <option key={s} value={s}>
                 {label(s)}

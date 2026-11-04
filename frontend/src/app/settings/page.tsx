@@ -15,7 +15,9 @@ import { api } from "@/lib/api";
 import { Settings } from "@/types";
 import { Button } from "@/components/ui/button";
 import { ErrorBox, Loading } from "@/components/common";
+import { UserManagement, useAuth } from "@/components/auth";
 export default function SettingsPage() {
+  const { user } = useAuth();
   const client = useQueryClient();
   const { data, error, isPending } = useQuery({
     queryKey: ["settings"],
@@ -24,6 +26,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState({
     model: "",
     retrieval_limit: 5,
+    retrieval_mode: "hybrid" as "keyword" | "hybrid",
     max_evidence_files: 5,
     default_mode: "demo" as "demo" | "live",
   });
@@ -32,6 +35,7 @@ export default function SettingsPage() {
       setForm({
         model: data.model,
         retrieval_limit: data.retrieval_limit,
+        retrieval_mode: data.retrieval_mode,
         max_evidence_files: data.max_evidence_files,
         default_mode: data.default_mode,
       });
@@ -78,6 +82,22 @@ export default function SettingsPage() {
                     {data.live_available ? "Configured" : "Not configured"}
                   </span>
                 </div>
+                <label htmlFor="retrieval-mode">Incident retrieval</label>
+                <select
+                  id="retrieval-mode"
+                  value={form.retrieval_mode}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      retrieval_mode: e.target.value as "keyword" | "hybrid",
+                    })
+                  }
+                >
+                  <option value="hybrid">
+                    Hybrid keyword + concept vectors
+                  </option>
+                  <option value="keyword">Keyword only</option>
+                </select>
                 <label htmlFor="model">Model</label>
                 <input
                   id="model"
@@ -235,13 +255,17 @@ export default function SettingsPage() {
                 ? "Configuration saved. New investigations will use these settings."
                 : "Credentials are managed only through backend environment variables."}
             </span>
-            <Button type="submit" disabled={save.isPending}>
+            <Button
+              type="submit"
+              disabled={save.isPending || user?.role !== "admin"}
+            >
               <Save size={16} />
               {save.isPending ? "Saving…" : "Save configuration"}
             </Button>
           </div>
         </form>
       )}
+      <UserManagement />
     </>
   );
 }

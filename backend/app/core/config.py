@@ -1,5 +1,6 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Literal
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -19,6 +20,11 @@ class Settings(BaseSettings):
     sandbox_image: str = ''
     sandbox_timeout_seconds: int = 30
     sandbox_docker_context: str = ''
+    auth_enabled: bool = True
+    secure_cookies: bool = False
+    session_hours: int = 12
+    public_origin: str = 'http://127.0.0.1:3000'
+    job_execution: Literal['embedded', 'external', 'inline'] = 'embedded'
 
 
 settings = Settings()

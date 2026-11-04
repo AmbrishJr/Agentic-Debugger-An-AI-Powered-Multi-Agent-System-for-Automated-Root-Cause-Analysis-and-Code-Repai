@@ -55,10 +55,12 @@ def availability():
         return {'available': False, 'reason': str(exc) if isinstance(exc, ValueError) else 'Docker readiness check failed.'}
 
 
-def policy():
+def policy(profile='python-unittest'):
+    if profile not in ('python-unittest', 'python-pytest'):
+        raise ValueError('Unsupported test profile.')
     return {'version': 1, 'image': settings.sandbox_image, 'docker_context': settings.sandbox_docker_context,
-            'profile': 'python-unittest',
-            'command': ['python', '-I', '-B', '/opt/autorca/bootstrap.py'],
+            'profile': profile,
+            'command': ['python', '-I', '-B', '/opt/autorca/bootstrap.py', profile],
             'network': 'none', 'user': '65534:65534', 'read_only_root': True,
             'memory_mb': 256, 'cpus': 0.5, 'pids': 32, 'output_limit_bytes': OUTPUT_LIMIT,
             'timeout_seconds': min(120, max(5, settings.sandbox_timeout_seconds)),
@@ -81,7 +83,7 @@ def cleanup(name):
 
 
 def run_snapshot(run_id: str, phase: str, files: dict, approved_policy: dict) -> dict:
-    if approved_policy != policy():
+    if approved_policy != policy(approved_policy['profile']):
         raise ValueError('Runner policy changed after authorization.')
     ready = availability()
     if not ready['available']:
@@ -95,7 +97,7 @@ def run_snapshot(run_id: str, phase: str, files: dict, approved_policy: dict) ->
             '--tmpfs=/workspace:rw,nosuid,nodev,noexec,size=16m,mode=1777',
             '--tmpfs=/tmp:rw,nosuid,nodev,noexec,size=16m,mode=1777',
             '--entrypoint=/usr/local/bin/python', approved_policy['image'],
-            '-I', '-B', '/opt/autorca/bootstrap.py']
+            '-I', '-B', '/opt/autorca/bootstrap.py', approved_policy['profile']]
     start = time.monotonic()
     result = {'phase': phase, 'status': 'error', 'exit_code': None, 'output': '', 'container': name,
               'timed_out': False, 'output_limited': False, 'cleanup_succeeded': False}
@@ -143,12 +145,14 @@ def run_snapshot(run_id: str, phase: str, files: dict, approved_policy: dict) ->
     except (OSError, ValueError, KeyError, subprocess.SubprocessError):
         result['error'] = 'Isolated runner operation failed; no host execution was attempted.'
     finally:
-        result['cleanup_succeeded'] = cleanup(name)
+        # Release a backpressured attach stream before asking Docker to remove a
+        # noisy container. Otherwise daemon removal can wait on the full pipe.
         if process:
             if process.poll() is None:
                 process.kill()
             process.wait(timeout=5)
             process.stdout.close()
+        result['cleanup_succeeded'] = cleanup(name)
     if not result['cleanup_succeeded']:
         result['status'] = 'error'
         result['error'] = 'Container cleanup failed. Stop the recorded container before continuing.'

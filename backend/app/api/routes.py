@@ -6,7 +6,7 @@ from sqlalchemy import select, update, func, or_, text
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import get_db, SessionLocal
-from app.models.records import Incident, Investigation, ProposedFix, AgentExecution, IncidentMemory, AppPreference, ValidationRun, now
+from app.models.records import Incident, Investigation, ProposedFix, AgentExecution, IncidentMemory, AppPreference, ValidationRun, Job, IncidentEvent, now
 from app.schemas.contracts import IncidentCreate, Decision, Preferences, PullRequestRequest, ValidationPlanRequest, ValidationAuthorization
 from app.services.security import redact, list_files, read_source, digest
 from app.services.sample import SAMPLE_LOG
@@ -14,7 +14,10 @@ from app.services.preferences import preferences
 from app.services.github import create_pull_request
 from app.agents.workflow import run_investigation, AGENTS
 from app.services import sandbox
-from app.services.validation_runs import public_run, prepare_plan, check_plan, execute_validation
+from app.services.validation_runs import public_run, prepare_plan, check_plan, execute_validation, expire_plans
+from app.services.jobs import enqueue
+from app.schemas.contracts import Resolution, Reopen
+from app.services.patches import fix_files
 
 router = APIRouter(prefix='/api')
 
@@ -43,7 +46,10 @@ def details(db, incident_id):
     inv = db.scalar(select(Investigation).where(Investigation.incident_id == incident_id))
     executions = db.scalars(select(AgentExecution).where(AgentExecution.investigation_id == inv.id).order_by(AgentExecution.created_at)).all() if inv else []
     fix = db.scalar(select(ProposedFix).where(ProposedFix.incident_id == incident_id))
-    return {**serialized(incident), 'investigation': serialized(inv), 'executions': [serialized(e) for e in executions], 'fix': serialized(fix)}
+    jobs = db.scalars(select(Job).where(Job.incident_id == incident_id).order_by(Job.created_at)).all()
+    audit = db.scalars(select(IncidentEvent).where(IncidentEvent.incident_id == incident_id).order_by(IncidentEvent.created_at)).all()
+    return {**serialized(incident), 'investigation': serialized(inv), 'executions': [serialized(e) for e in executions], 'fix': serialized(fix),
+            'jobs': [serialized(j) for j in jobs], 'audit': [serialized(e) for e in audit]}
 
 
 @router.get('/health')
@@ -119,9 +125,9 @@ def investigate(incident_id: str, tasks: BackgroundTasks, db: Session = Depends(
         db.rollback()
         raise HTTPException(409, 'This incident has already started. Submit a new incident to investigate again.')
     db.add(Investigation(incident_id=incident_id, config=preferences(db)))
+    job = enqueue(db, 'investigation', incident_id, incident_id, tasks)
     db.commit()
-    tasks.add_task(run_investigation, incident_id)
-    return {'incident_id': incident_id, 'status': 'investigating'}
+    return {'incident_id': incident_id, 'status': 'investigating', 'job_id': job.id}
 
 
 @router.get('/incidents/{incident_id}/status')
@@ -171,7 +177,7 @@ def patch(incident_id: str, db: Session = Depends(get_db)):
     return serialized(get_fix(db, incident_id))
 
 
-def decide(incident_id, decision, body, db):
+def decide(incident_id, decision, body, db, actor='local developer'):
     incident = incident_or_404(db, incident_id)
     fix = get_fix(db, incident_id)
     if fix.validation_result.get('status') == 'running':
@@ -181,7 +187,7 @@ def decide(incident_id, decision, body, db):
     if decision == 'approved':
         if fix.validation_result.get('status') not in ('passed', 'partial'):
             raise HTTPException(409, 'Approval requires completed validation without failed checks.')
-        if digest(read_source(incident.repository, fix.path)) != fix.original_sha256:
+        if any(digest(read_source(incident.repository, f['path'])) != f['original_sha256'] for f in fix_files(fix)):
             raise HTTPException(409, 'Source changed since investigation. Submit a new incident.')
     changed = db.execute(update(ProposedFix).where(ProposedFix.id == fix.id, ProposedFix.approval_status == 'pending',
         ProposedFix.validation_result['status'].as_string() != 'running').values(
@@ -190,6 +196,7 @@ def decide(incident_id, decision, body, db):
         db.rollback()
         raise HTTPException(409, 'A review decision has already been recorded.')
     incident.status, incident.updated_at = decision, now()
+    db.add(IncidentEvent(incident_id=incident_id, action=decision, actor=actor, note=redact(body.note)))
     memory = db.scalar(select(IncidentMemory).where(IncidentMemory.incident_id == incident_id))
     if memory:
         memory.retrieval_metadata = {**memory.retrieval_metadata, 'approval': decision}
@@ -200,13 +207,93 @@ def decide(incident_id, decision, body, db):
 
 
 @router.post('/incidents/{incident_id}/approve')
-def approve(incident_id: str, body: Decision, db: Session = Depends(get_db)):
-    return decide(incident_id, 'approved', body, db)
+def approve(incident_id: str, body: Decision, request: Request, db: Session = Depends(get_db)):
+    return decide(incident_id, 'approved', body, db, request.state.user['username'])
 
 
 @router.post('/incidents/{incident_id}/reject')
-def reject(incident_id: str, body: Decision, db: Session = Depends(get_db)):
-    return decide(incident_id, 'rejected', body, db)
+def reject(incident_id: str, body: Decision, request: Request, db: Session = Depends(get_db)):
+    return decide(incident_id, 'rejected', body, db, request.state.user['username'])
+
+
+@router.post('/incidents/{incident_id}/resolve')
+def resolve_incident(incident_id: str, body: Resolution, request: Request, db: Session = Depends(get_db)):
+    incident = incident_or_404(db, incident_id)
+    if len(body.note.strip()) < 10 or len(body.evidence.strip()) < 10:
+        raise HTTPException(422, 'Provide a resolution summary and verification evidence.')
+    changed = db.execute(update(Incident).where(Incident.id == incident_id, Incident.status.in_(('approved', 'reopened'))).values(
+        status='resolved', resolution_note=redact(body.note), resolution_evidence=redact(body.evidence),
+        resolved_at=now(), resolved_by=request.state.user['username'], updated_at=now()))
+    if changed.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, 'Only an approved or reopened incident can be resolved.')
+    db.add(IncidentEvent(incident_id=incident_id, action='resolved', actor=request.state.user['username'], note=redact(body.note), evidence=redact(body.evidence)))
+    memory = db.scalar(select(IncidentMemory).where(IncidentMemory.incident_id == incident_id))
+    if memory:
+        memory.resolution_summary = 'Human-confirmed resolution: ' + redact(body.note)
+        memory.retrieval_metadata = {**memory.retrieval_metadata, 'resolved': True, 'evidence': redact(body.evidence)}
+        db.execute(text('UPDATE memory_fts SET resolution_summary=:summary WHERE incident_id=:id'), {'summary': memory.resolution_summary, 'id': incident_id})
+    db.commit()
+    db.expire_all()
+    return details(db, incident_id)
+
+
+@router.post('/incidents/{incident_id}/reopen')
+def reopen_incident(incident_id: str, body: Reopen, request: Request, db: Session = Depends(get_db)):
+    incident_or_404(db, incident_id)
+    if len(body.note.strip()) < 10:
+        raise HTTPException(422, 'Explain why the incident is being reopened.')
+    changed = db.execute(update(Incident).where(Incident.id == incident_id, Incident.status == 'resolved').values(status='reopened', updated_at=now()))
+    if changed.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, 'Only a resolved incident can be reopened.')
+    db.add(IncidentEvent(incident_id=incident_id, action='reopened', actor=request.state.user['username'], note=redact(body.note)))
+    memory = db.scalar(select(IncidentMemory).where(IncidentMemory.incident_id == incident_id))
+    if memory:
+        memory.resolution_summary = 'Reopened; previous resolution is no longer confirmed. ' + redact(body.note)
+        memory.retrieval_metadata = {**memory.retrieval_metadata, 'resolved': False}
+        db.execute(text('UPDATE memory_fts SET resolution_summary=:summary WHERE incident_id=:id'), {'summary': memory.resolution_summary, 'id': incident_id})
+    db.commit()
+    db.expire_all()
+    return details(db, incident_id)
+
+
+@router.post('/jobs/{job_id}/cancel')
+def cancel_job(job_id: str, db: Session = Depends(get_db)):
+    db.connection().exec_driver_sql('BEGIN IMMEDIATE')
+    job = db.get(Job, job_id)
+    if not job or job.kind != 'investigation' or job.status not in ('queued', 'running'):
+        raise HTTPException(409, 'Only an active investigation can be cancelled. Isolated tests have a bounded deadline.')
+    job.cancel_requested, job.updated_at = True, now()
+    if job.status == 'queued':
+        job.status = 'cancelled'
+        db.get(Incident, job.incident_id).status = 'cancelled'
+    db.commit()
+    return serialized(job)
+
+
+@router.post('/jobs/{job_id}/retry', status_code=202)
+def retry_job(job_id: str, tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    db.connection().exec_driver_sql('BEGIN IMMEDIATE')
+    job = db.get(Job, job_id)
+    if not job or job.kind != 'investigation' or job.status not in ('failed', 'cancelled') or job.attempts >= 3:
+        raise HTTPException(409, 'Only failed or cancelled investigations below three attempts can be retried.')
+    fix = db.scalar(select(ProposedFix).where(ProposedFix.incident_id == job.incident_id))
+    if fix and (fix.approval_status != 'pending' or fix.validation_result.get('status') == 'running'):
+        raise HTTPException(409, 'Reviewed fixes or active isolated tests cannot be retried.')
+    inv = db.scalar(select(Investigation).where(Investigation.incident_id == job.incident_id))
+    errors = inv.analysis_results.get('errors', [])
+    first = min([AGENTS.index(e['agent']) for e in errors if e['agent'] in AGENTS], default=len(AGENTS))
+    if fix and first <= AGENTS.index('fix'):
+        fix.validation_result = {'status': 'regenerate', 'checks': [], 'limitations': 'Upstream analysis is being retried. This proposal cannot be approved until regenerated and validated.'}
+    inv.analysis_results = {k: v for k, v in inv.analysis_results.items() if k in AGENTS[:first]}
+    job.status, job.cancel_requested, job.error, job.updated_at = 'queued', False, None, now()
+    db.get(Incident, job.incident_id).status = 'investigating'
+    if settings.job_execution == 'inline':
+        from app.services.jobs import run_job
+        tasks.add_task(run_job, job.id)
+    db.commit()
+    return serialized(job)
 
 
 @router.post('/incidents/{incident_id}/pull-request')
@@ -241,11 +328,11 @@ def pull_request(incident_id: str, body: PullRequestRequest, db: Session = Depen
 @router.get('/dashboard/stats')
 def dashboard(db: Session = Depends(get_db)):
     rows = db.scalars(select(Incident).order_by(Incident.created_at.desc())).all()
-    counts = {status: sum(i.status == status for i in rows) for status in ('submitted', 'investigating', 'awaiting_review', 'approved', 'rejected', 'failed', 'partial', 'needs_evidence')}
-    completed = sum(counts[s] for s in ('awaiting_review', 'approved', 'rejected', 'needs_evidence'))
+    counts = {status: sum(i.status == status for i in rows) for status in ('submitted', 'investigating', 'awaiting_review', 'approved', 'rejected', 'failed', 'partial', 'needs_evidence', 'resolved', 'reopened', 'cancelled')}
+    completed = sum(counts[s] for s in ('awaiting_review', 'approved', 'rejected', 'needs_evidence', 'resolved', 'reopened'))
     attempted = len(rows) - counts['submitted'] - counts['investigating']
-    return {'total': len(rows), 'open': sum(counts[s] for s in ('submitted', 'investigating', 'awaiting_review', 'partial', 'needs_evidence', 'failed')),
-            'resolved': 0, 'approved': counts['approved'], 'pending_approvals': counts['awaiting_review'],
+    return {'total': len(rows), 'open': len(rows) - counts['resolved'] - counts['rejected'],
+            'resolved': counts['resolved'], 'approved': counts['approved'] + counts['resolved'] + counts['reopened'], 'pending_approvals': counts['awaiting_review'],
             'success_rate': round(completed / attempted * 100) if attempted else None,
             'demo_count': sum(i.mode == 'demo' for i in rows), 'recent': [serialized(i) for i in rows[:6]],
             'severity': [{'name': s, 'value': sum(i.severity == s for i in rows)} for s in ('critical', 'high', 'medium', 'low')],
@@ -268,13 +355,15 @@ def sandbox_status():
 @router.get('/incidents/{incident_id}/validation-runs')
 def validation_runs(incident_id: str, db: Session = Depends(get_db)):
     incident_or_404(db, incident_id)
+    expire_plans(db)
     rows = db.scalars(select(ValidationRun).where(ValidationRun.incident_id == incident_id).order_by(ValidationRun.created_at.desc())).all()
     return {'items': [public_run(r) for r in rows]}
 
 
 @router.post('/incidents/{incident_id}/validation-plans', status_code=201)
 def validation_plan(incident_id: str, body: ValidationPlanRequest, db: Session = Depends(get_db)):
-    run = prepare_plan(incident_or_404(db, incident_id), get_fix(db, incident_id), body.files)
+    expire_plans(db)
+    run = prepare_plan(incident_or_404(db, incident_id), get_fix(db, incident_id), body.files, body.profile)
     db.add(run)
     db.commit()
     return public_run(run)
@@ -292,15 +381,15 @@ def authorize_validation(incident_id: str, run_id: str, body: ValidationAuthoriz
         raise HTTPException(409, ready['reason'])
     claimed = db.execute(update(ProposedFix).where(ProposedFix.id == fix.id, ProposedFix.approval_status == 'pending',
         ProposedFix.validation_result['status'].as_string() != 'running').values(validation_result={**fix.validation_result, 'status': 'running'}))
-    if claimed.rowcount != 1 or db.scalar(select(func.count()).select_from(ValidationRun).where(ValidationRun.status == 'running')):
+    if claimed.rowcount != 1 or db.scalar(select(func.count()).select_from(ValidationRun).where(ValidationRun.status.in_(('running', 'cleanup_failed')))):
         db.rollback()
-        raise HTTPException(409, 'Another isolated run is active. Try after it finishes.')
+        raise HTTPException(409, 'Another isolated run is active or needs container cleanup. Finish cleanup and restart the backend before retrying.')
     claimed_run = db.execute(update(ValidationRun).where(ValidationRun.id == run_id, ValidationRun.status == 'planned').values(status='running', authorized_at=now()))
     if claimed_run.rowcount != 1:
         db.rollback()
         raise HTTPException(409, 'This plan has already been authorized.')
+    enqueue(db, 'validation', run_id, incident_id, tasks)
     db.commit()
-    tasks.add_task(execute_validation, run_id)
     return {'id': run_id, 'status': 'running'}
 
 

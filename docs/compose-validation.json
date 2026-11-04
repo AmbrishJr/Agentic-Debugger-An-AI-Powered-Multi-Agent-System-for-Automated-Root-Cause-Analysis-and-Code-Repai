@@ -1,0 +1,13 @@
+{
+  "status": "passed",
+  "project": "autorca-verify-615bdec9",
+  "checks": [
+    "Three-service stack starts with isolated volume and loopback ports",
+    "Authentication cookie and CSRF token work through Next proxy",
+    "Persisted queued investigation completes after worker restart",
+    "Session, approval, resolution, audit, and database survive service restart",
+    "Viewer reads incidents and cannot change them",
+    "Logout revokes the server-side session"
+  ],
+  "cleanup": "Only this disposable project containers, network, and volume removed."
+}

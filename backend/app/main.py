@@ -11,29 +11,21 @@ from app.db.session import SessionLocal
 from app.db.migrate import migrate
 from app.models.records import Incident, Investigation, AgentExecution, ProposedFix, ValidationRun, now
 from app.services import sandbox
+from app.services.validation_runs import expire_plans
+from app.api.auth_routes import router as auth_router
+from app.services.auth import authorize
+from app.services.jobs import start_worker
 
 
 @asynccontextmanager
 async def lifespan(app):
     migrate()
-    # Single worker local service: make interrupted jobs explicit on restart.
     with SessionLocal() as db:
-        for run in db.scalars(select(ValidationRun).where(ValidationRun.status == 'running')):
-            cleaned = all([sandbox.cleanup(sandbox.container_name(run.id, phase)) for phase in ('before', 'after')])
-            run.status, run.finished_at, run.snapshot = 'error', now(), {}
-            run.result = {'error': 'Service restarted during isolated validation.', 'cleanup_succeeded': cleaned}
-            fix = db.get(ProposedFix, run.fix_id)
-            fix.validation_result = {**fix.validation_result, 'status': 'error', 'isolated': run.result}
-        for row in db.scalars(select(Incident).where(Incident.status == 'investigating')):
-            row.status = 'failed'
-        for row in db.scalars(select(AgentExecution).where(AgentExecution.execution_status == 'running')):
-            row.execution_status, row.error_details = 'failed', 'Service restarted during execution.'
-        for row in db.scalars(select(Investigation).where(Investigation.agent_status != 'completed')):
-            row.agent_status = 'failed'
-        for row in db.scalars(select(ProposedFix).where(ProposedFix.pr_status == 'creating')):
-            row.pr_status = 'failed'
-        db.commit()
+        expire_plans(db)
+    stop = start_worker() if settings.job_execution == 'embedded' else None
     yield
+    if stop:
+        stop.set()
 
 
 app = FastAPI(title='AutoRCA-X', version='0.1.0', lifespan=lifespan)
@@ -43,6 +35,14 @@ app = FastAPI(title='AutoRCA-X', version='0.1.0', lifespan=lifespan)
 async def request_guard(request: Request, call_next):
     if settings.autorca_api_token and not hmac.compare_digest(request.headers.get('x-autorca-token', ''), settings.autorca_api_token):
         return JSONResponse({'error': {'code': 'unauthorized', 'message': 'API authentication required.'}}, 401)
+    if request.method not in ('GET', 'HEAD', 'OPTIONS') and request.headers.get('origin') and request.headers['origin'] != settings.public_origin:
+        return JSONResponse({'error': {'code': 'origin', 'message': 'Request origin is not allowed.'}}, 403)
+    if request.url.path not in ('/api/health', '/api/auth/me', '/api/auth/login'):
+        try:
+            with SessionLocal() as db:
+                authorize(request, db)
+        except HTTPException as exc:
+            return JSONResponse({'error': {'code': str(exc.status_code), 'message': exc.detail}}, exc.status_code)
     if request.method in ('POST', 'PUT', 'PATCH'):
         if request.headers.get('content-type', '').split(';')[0] != 'application/json':
             return JSONResponse({'error': {'code': 'content_type', 'message': 'Use application/json.'}}, 415)
@@ -81,3 +81,4 @@ async def internal_error(request, exc):
 
 
 app.include_router(router)
+app.include_router(auth_router)

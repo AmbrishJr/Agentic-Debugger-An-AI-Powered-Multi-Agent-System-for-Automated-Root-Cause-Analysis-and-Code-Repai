@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { Shell } from "@/components/shell";
+import { AuthGate } from "@/components/auth";
 export const metadata: Metadata = {
   title: {
     default: "AutoRCA-X · Engineering intelligence",
@@ -22,7 +23,9 @@ export default function RootLayout({
           Skip to content
         </a>
         <Providers>
-          <Shell>{children}</Shell>
+          <AuthGate>
+            <Shell>{children}</Shell>
+          </AuthGate>
         </Providers>
       </body>
     </html>

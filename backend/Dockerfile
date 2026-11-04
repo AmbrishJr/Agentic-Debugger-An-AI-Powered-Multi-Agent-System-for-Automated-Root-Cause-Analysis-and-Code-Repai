@@ -1,5 +1,6 @@
 FROM python:3.12-slim
 WORKDIR /workspace
+ENV PYTHONPATH=/workspace/backend
 COPY backend/requirements.lock /tmp/requirements.lock
 RUN pip install --no-cache-dir -r /tmp/requirements.lock
 COPY backend /workspace/backend

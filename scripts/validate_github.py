@@ -8,6 +8,8 @@ import argparse
 import base64
 import json
 import os
+os.environ['AUTH_ENABLED'] = 'false'
+os.environ['JOB_EXECUTION'] = 'inline'
 from pathlib import Path
 import subprocess
 import tempfile
@@ -18,6 +20,7 @@ import httpx
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--execute', action='store_true', help='Authorize private repo, fixture commit, and draft PR creation')
+    parser.add_argument('--multi-file', action='store_true')
     parser.add_argument('--output', default='docs/github-validation.json')
     args = parser.parse_args()
     if not args.execute:
@@ -68,6 +71,8 @@ def main():
                 branch = repo['default_branch']
                 # The new repo contains no workflow files, repository hooks, or third-party dependencies.
                 fixture = {'checkout.py': BUGGY, 'test_checkout.py': REGRESSION_TEST}
+                if args.multi_file:
+                    fixture['limits.py'] = 'MAX_DISCOUNT = 99\n'
                 for filename, content in fixture.items():
                     call('PUT', prefix + '/contents/' + filename, json={'message':'Add synthetic regression fixture',
                          'content':base64.b64encode(content.encode()).decode(),'branch':branch})
@@ -84,6 +89,10 @@ def main():
                             original_sha256=digest(BUGGY), proposed_patch=unified_patch('checkout.py',BUGGY,FIXED),
                             explanation='Synthetic fixture validates the app GitHub publishing transport.', risks=['Integration test only.'],
                             validation_result=validate('local','checkout.py',digest(BUGGY),FIXED,'demo'))
+                        if args.multi_file:
+                            fix.files = [{'path':'checkout.py','original_code':BUGGY,'proposed_code':FIXED,'original_sha256':digest(BUGGY),'diff':fix.proposed_patch},
+                                {'path':'limits.py','original_code':'MAX_DISCOUNT = 99\n','proposed_code':'MAX_DISCOUNT = 100\n','original_sha256':digest('MAX_DISCOUNT = 99\n'),'diff':unified_patch('limits.py','MAX_DISCOUNT = 99\n','MAX_DISCOUNT = 100\n')}]
+                            fix.proposed_patch = ''.join(f['diff'] for f in fix.files)
                         db.add(fix)
                         db.commit()
                         incident_id = incident.id
@@ -102,13 +111,16 @@ def main():
                 pr = call('GET', prefix + f'/pulls/{number}')
                 changed = call('GET', prefix + f'/pulls/{number}/files')
                 assert pr['draft'] and pr['base']['ref'] == branch
-                assert [f['filename'] for f in changed] == ['checkout.py']
+                assert sorted(f['filename'] for f in changed) == (['checkout.py','limits.py'] if args.multi_file else ['checkout.py'])
+                if args.multi_file:
+                    secondary = call('GET', prefix + '/contents/limits.py', params={'ref':pr['head']['sha']})
+                    assert base64.b64decode(secondary['content']).decode() == 'MAX_DISCOUNT = 100\n'
                 baseline = call('GET', prefix + '/contents/checkout.py', params={'ref':branch})
                 patched = call('GET', prefix + '/contents/checkout.py', params={'ref':pr['head']['sha']})
                 assert base64.b64decode(baseline['content']).decode() == BUGGY
                 assert base64.b64decode(patched['content']).decode() == FIXED
                 report.update(status='passed', checks=['Approval gate','Explicit PR authorization','Private repository',
-                    'Draft PR','Exactly one changed file','Patched content matches reviewed proposal','Base unchanged','Retry returns same PR'],
+                    'Draft PR','Exactly the reviewed files changed','Patched content matches reviewed proposal','Base unchanged','Retry returns same PR'],
                     head_sha=pr['head']['sha'], base_branch=branch, cleanup='Private repository and draft PR retained for inspection; no merge or deployment.')
                 save()
         except Exception as exc:

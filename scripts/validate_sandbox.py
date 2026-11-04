@@ -2,6 +2,8 @@
 import argparse
 import json
 import os
+os.environ['AUTH_ENABLED'] = 'false'
+os.environ['JOB_EXECUTION'] = 'inline'
 from pathlib import Path
 import subprocess
 import tempfile
@@ -94,6 +96,9 @@ def main():
                 assert run['result']['after']['status']=='passed'
                 assert 'Ran 11 tests' in run['result']['after']['output']
                 assert client.post(f'/api/incidents/{identifier}/approve',json={}).status_code==200
+            pytest_run=sandbox.run_snapshot(str(uuid.uuid4()),'after',{'checkout.py':FIXED,'test_checkout.py':'from checkout import calculate_discount\ndef test_zero_discount():\n    assert calculate_discount(100, 0) == 100\n'},sandbox.policy('python-pytest'))
+            report['pytest']=pytest_run;save()
+            assert pytest_run['status']=='passed' and '1 passed' in pytest_run['output']
             settings.sandbox_timeout_seconds=5
             timeout=sandbox.run_snapshot(str(uuid.uuid4()),'before',{'test_timeout.py':'while True: pass\n'},sandbox.policy())
             report['timeout']={k:v for k,v in timeout.items() if k!='output'};save()
@@ -102,7 +107,7 @@ def main():
             report['output_limit']={k:v for k,v in noise.items() if k!='output'};save()
             assert noise['output_limited'] and noise['status']=='error' and noise['cleanup_succeeded']
             assert len(noise['output'].encode())<=sandbox.OUTPUT_LIMIT
-            report.update(status='passed',checks=['API plan and one-use authorization','Original regression fails','Patched suite passes',
+            report.update(status='passed',checks=['API plan and one-use authorization','Original regression fails','Patched suite passes','Pytest profile passes',
                 'Non-root UID','No external network','Read-only root','No application credentials','No Docker socket','No Linux capabilities',
                 'Enforced memory and PID limits','Timeout enforced','Output bounded','Containers removed','Approval after validation'])
             save()

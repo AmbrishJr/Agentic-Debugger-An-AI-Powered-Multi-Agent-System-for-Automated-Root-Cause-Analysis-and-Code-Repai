@@ -1,11 +1,12 @@
 services:
   backend:
+    image: autorca-backend:local
     build:
       context: .
       dockerfile: backend/Dockerfile
     ports:
-      - "127.0.0.1:8000:8000"
-    environment:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    environment: &backend-environment
       DATABASE_URL: sqlite:////workspace/data/autorca.db
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
@@ -13,6 +14,10 @@ services:
       GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
       GITHUB_BASE_BRANCH: ${GITHUB_BASE_BRANCH:-main}
       AUTORCA_API_TOKEN: ${AUTORCA_API_TOKEN:-}
+      AUTH_ENABLED: "true"
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://127.0.0.1:3000}
+      JOB_EXECUTION: external
     volumes:
       - autorca-data:/workspace/data
     healthcheck:
@@ -20,17 +25,30 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+  worker:
+    image: autorca-backend:local
+    command: ["python", "-m", "app.worker"]
+    environment: *backend-environment
+    volumes:
+      - autorca-data:/workspace/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
   frontend:
+    image: autorca-frontend:local
     build:
       context: .
       dockerfile: frontend/Dockerfile
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     environment:
       BACKEND_URL: http://backend:8000
       AUTORCA_API_TOKEN: ${AUTORCA_API_TOKEN:-}
     depends_on:
       backend:
         condition: service_healthy
+    restart: unless-stopped
 volumes:
   autorca-data:

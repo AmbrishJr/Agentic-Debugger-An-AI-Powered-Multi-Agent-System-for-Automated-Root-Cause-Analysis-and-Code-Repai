@@ -105,7 +105,7 @@ def test_no_shell_mount_credentials_or_unpinned_image(ready,monkeypatch):
     for flag in ('--read-only','--network=none','--cap-drop=ALL','--security-opt=no-new-privileges','--pids-limit=32','--memory=256m','--pull=never','--log-driver=none'):
         assert flag in command
     assert not any(arg.startswith(('--volume','--mount','--env')) for arg in command)
-    assert command[-3:]==['-I','-B','/opt/autorca/bootstrap.py']
+    assert command[-4:]==['-I','-B','/opt/autorca/bootstrap.py','python-unittest']
     assert calls[-1][:2]==['rm','--force']
     assert result['status']=='error'
 
@@ -115,3 +115,26 @@ def test_policy_change_prevents_execution(ready,monkeypatch):
     monkeypatch.setattr(settings,'sandbox_timeout_seconds',60)
     with pytest.raises(ValueError,match='policy changed'):
         sandbox.run_snapshot('irrelevant','after',{},previous)
+
+
+def test_failed_cleanup_blocks_subsequent_execution(client, ready, monkeypatch):
+    monkeypatch.setattr(sandbox,'run_snapshot',lambda *args: {'status':'error','exit_code':None,'output':'','cleanup_succeeded':False})
+    identifier,_=investigate(client)
+    planned=plan(client,identifier)
+    path=f'/api/incidents/{identifier}/validation-runs/{planned["id"]}/authorize'
+    assert client.post(path,json={'authorized':True,'plan_hash':planned['plan_hash']}).status_code==202
+    assert client.get(f'/api/incidents/{identifier}/validation-runs').json()['items'][0]['status']=='cleanup_failed'
+    second=plan(client,identifier)
+    path=f'/api/incidents/{identifier}/validation-runs/{second["id"]}/authorize'
+    assert client.post(path,json={'authorized':True,'plan_hash':second['plan_hash']}).status_code==409
+
+
+def test_expired_snapshot_bodies_are_purged(client, ready):
+    identifier,_=investigate(client)
+    planned=plan(client,identifier)
+    with SessionLocal() as db:
+        db.get(ValidationRun,planned['id']).expires_at=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()
+        db.commit()
+    assert client.get(f'/api/incidents/{identifier}/validation-runs').json()['items'][0]['status']=='expired'
+    with SessionLocal() as db:
+        assert db.get(ValidationRun,planned['id']).snapshot=={}

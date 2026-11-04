@@ -5,26 +5,30 @@ export default defineConfig({
   workers: 1,
   timeout: 60000,
   expect: { timeout: 15000 },
-  use: { baseURL: "http://127.0.0.1:3000", trace: "retain-on-failure" },
+  use: { baseURL: "http://127.0.0.1:13000", trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
       command:
-        "../backend/.venv/bin/uvicorn app.main:app --app-dir ../backend --host 127.0.0.1 --port 8000",
-      url: "http://127.0.0.1:8000/api/health",
-      reuseExistingServer: !process.env.CI,
+        "PYTHONPATH=../backend ../backend/.venv/bin/python ../scripts/seed_e2e.py && ../backend/.venv/bin/uvicorn app.main:app --app-dir ../backend --host 127.0.0.1 --port 18000",
+      url: "http://127.0.0.1:18000/api/health",
+      reuseExistingServer: false,
       env: {
         DATABASE_URL: "sqlite:///./test-results/e2e.db",
         OPENAI_API_KEY: "",
         GITHUB_TOKEN: "",
         AUTORCA_API_TOKEN: "",
-        SANDBOX_ENABLED: process.env.AUTORCA_E2E_SANDBOX === "1" ? "true" : "false",
+        AUTH_ENABLED: "true",
+        AUTORCA_E2E: "1",
+        SANDBOX_ENABLED:
+          process.env.AUTORCA_E2E_SANDBOX === "1" ? "true" : "false",
       },
     },
     {
-      command: "npm run dev",
-      url: "http://127.0.0.1:3000",
-      reuseExistingServer: !process.env.CI,
+      command: "npm run start -- --port 13000",
+      url: "http://127.0.0.1:13000",
+      reuseExistingServer: false,
+      env: { BACKEND_URL: "http://127.0.0.1:18000", AUTORCA_API_TOKEN: "" },
       timeout: 120000,
     },
   ],

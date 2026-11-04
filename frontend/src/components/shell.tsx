@@ -19,6 +19,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Settings } from "@/types";
+import { AccountControls, useAuth } from "./auth";
 
 const links = [
   { href: "/", name: "Overview", icon: LayoutDashboard },
@@ -27,6 +28,7 @@ const links = [
   { href: "/settings", name: "Settings", icon: Settings2 },
 ];
 export function Shell({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const path = usePathname();
   const { data, error } = useQuery({
     queryKey: ["settings"],
@@ -86,9 +88,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <span className="profile-avatar">
               <Terminal size={18} />
             </span>
-            <div>
-              Developer<small>Local session</small>
-            </div>
+            <div>{user?.username}<small>{user?.role} access</small></div>
             <GitBranch size={16} />
           </div>
         </div>
@@ -112,6 +112,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </strong>
           </div>
           <div className="topbar-right">
+            <AccountControls />
             <span className="environment-label">
               <span className="status-dot" /> LOCAL
             </span>

@@ -52,6 +52,7 @@ export function IsolatedValidation({
 }) {
   const client = useQueryClient();
   const [selected, setSelected] = useState<string[]>([]);
+  const [profile, setProfile] = useState("python-unittest");
   const [consent, setConsent] = useState(false);
   const [plan, setPlan] = useState<Run | null>(null);
   const runner = useQuery({
@@ -79,7 +80,10 @@ export function IsolatedValidation({
   }, [runs.dataUpdatedAt, client, id]);
   const prepare = useMutation({
     mutationFn: () =>
-      post<Run>(`/incidents/${id}/validation-plans`, { files: selected }),
+      post<Run>(`/incidents/${id}/validation-plans`, {
+        files: selected,
+        profile,
+      }),
     onSuccess: (r) => {
       setPlan(r);
       setConsent(false);
@@ -125,9 +129,9 @@ export function IsolatedValidation({
         }
       />
       <p className="fine-print">
-        Run a fixed Python unittest profile in two fresh containers, before and
-        after the patch. No network, credentials, or host mounts are supplied.
-        Only the selected snapshot is included.
+        Run a fixed Python unittest or pytest profile in two fresh containers,
+        before and after the patch. No network, credentials, or host mounts are
+        supplied. Only the selected snapshot is included.
       </p>
       {!runner.data?.available && (
         <p className="fine-print">
@@ -136,6 +140,20 @@ export function IsolatedValidation({
       )}
       {pending && runner.data?.available && !running && (
         <>
+          <label>
+            Test framework
+            <select
+              value={profile}
+              onChange={(e) => {
+                setProfile(e.target.value);
+                setPlan(null);
+                setConsent(false);
+              }}
+            >
+              <option value="python-unittest">unittest</option>
+              <option value="python-pytest">pytest</option>
+            </select>
+          </label>
           <details className="file-picker" open={!plan}>
             <summary>
               Select Python source and tests <span>{selected.length} / 32</span>
