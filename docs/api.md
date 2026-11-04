@@ -46,3 +46,6 @@ Incident transitions: `submitted → investigating → awaiting_review | needs_e
 | POST | `/api/incidents/{id}/reopen` | Resolved → reopened; requires reason in note |
 
 Incident details include `jobs` and `audit`. Patch records include `files` (per-file snapshots, hashes, and diffs); legacy primary-file fields remain for compatibility. Admins manage accounts/settings; editors can mutate investigations and decisions; viewers can only read and manage their own session/password. All roles share the workspace. `/api/health`, `/api/auth/me`, and `/api/auth/login` do not require a session; the optional server API token remains independent. Initial administrator creation is local-only via `python -m app.manage`.
+
+
+Provider configuration: `/api/settings` accepts `provider: "openai" | "gemini"` and the matching `model`. Its response includes credential-free `providers` availability/default-model records; `live_available` reflects the selected provider. Initial values come from `LLM_PROVIDER`, `OPENAI_MODEL`, and `GEMINI_MODEL`. Environment keys stay server-side. Investigation config and live reports identify their snapshotted provider/model. Gemini quota/access failures appear as safe agent errors; no provider fallback occurs.

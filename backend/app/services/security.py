@@ -11,7 +11,7 @@ IGNORED = {'.git', '.env', '.aws', '.ssh', '.venv', 'venv', 'node_modules', '__p
 def redact(text: str) -> str:
     text = re.sub(r'(?i)(authorization\s*[:=]\s*(?:bearer\s+)?)[^\s,;]+', r'\1[REDACTED]', text)
     text = re.sub(r'(?i)((?:api[_-]?key|password|passwd|secret|token)\s*["\']?\s*[:=]\s*["\']?)[^\s"\',;]+', r'\1[REDACTED]', text)
-    text = re.sub(r'\b(?:sk-[a-zA-Z0-9_-]{12,}|gh[pousr]_[a-zA-Z0-9_]{12,}|github_pat_[a-zA-Z0-9_]+|AKIA[A-Z0-9]{16})\b', '[REDACTED]', text)
+    text = re.sub(r'\b(?:sk-[a-zA-Z0-9_-]{12,}|gh[pousr]_[a-zA-Z0-9_]{12,}|github_pat_[a-zA-Z0-9_]+|AKIA[A-Z0-9]{16}|AIza[a-zA-Z0-9_-]{30,})\b', '[REDACTED]', text)
     text = re.sub(r'-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----', '[REDACTED PRIVATE KEY]', text)
     return text
 

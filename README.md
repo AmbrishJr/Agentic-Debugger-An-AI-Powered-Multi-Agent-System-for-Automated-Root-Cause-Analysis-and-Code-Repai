@@ -13,7 +13,7 @@ AutoRCA-X is a local, full-stack engineering workspace with a seven-agent LangGr
 - Seven sequential LangGraph agents: triage → evidence → memory → analysis → fix → validation → report.
 - Demo diagnosis of the deliberately broken percentage-discount implementation, a unified/split diff, and actual failing-before/passing-after regression tests.
 - Persistent approval/rejection with source-version checks. Approval does **not** apply code, commit, deploy, or mark a production incident resolved.
-- Live OpenAI structured outputs validated with Pydantic, with explicit partial results on provider or agent failures.
+- Live OpenAI or Google Gemini structured outputs validated with Pydantic, with explicit partial results on provider or agent failures.
 - Hybrid FTS5/BM25 and local TF-IDF concept-vector retrieval of previous investigations. Historical proposals and review decisions are labeled; they are not represented as successful deployed fixes.
 - Optional, separately authorized GitHub draft PR creation using a backend-only fine-grained access token.
 - Explicitly authorized isolated Python unittest and pytest runs against immutable before/after snapshots, with persisted manifests and bounded Docker execution.
@@ -82,7 +82,10 @@ Backend settings are loaded from the project-root `.env`, with environment varia
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | empty | Enables Live AI Mode; server only |
+| `OPENAI_API_KEY` | empty | Enables Live AI with OpenAI; server only |
+| `LLM_PROVIDER` | `openai` | Initial provider: `openai` or `gemini` |
+| `GEMINI_API_KEY` | empty | Google AI Studio key; server only |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Initial Gemini model, adjustable in Settings |
 | `OPENAI_MODEL` | `gpt-4.1-mini` | Initial model; must support structured outputs and be available to your account |
 | `DATABASE_URL` | `sqlite:///./data/autorca.db` | SQLite database location |
 | `REPOSITORY_ROOT` | empty | Absolute path to a local source repository; no arbitrary paths from the browser |
@@ -108,15 +111,39 @@ BACKEND_URL=http://127.0.0.1:8000
 AUTORCA_API_TOKEN=
 ```
 
-The Settings page persists the model, default investigation mode, evidence file limit, retrieval mode, and historical match limit. Each investigation snapshots these values at start. A saved model preference overrides the environment default. Credentials can only be configured through backend environment variables; the UI receives availability flags, not secrets.
+The Settings page persists the provider, model, default investigation mode, evidence file limit, retrieval mode, and historical match limit. Each investigation snapshots these values at start. A saved model preference overrides the environment default. Credentials can only be configured through backend environment variables; the UI receives availability flags, not secrets.
 
 ### Live AI Mode
 
-Set a valid API key, configure a source repository if desired, restart FastAPI, and choose **Live AI** when submitting. Redacted logs and collected source files are sent to OpenAI. Triage, analysis, fix generation, and report narration call `client.responses.parse` with Pydantic schemas. Evidence collection, retrieval, and validation remain deterministic application code inside the same LangGraph.
+Set the selected provider’s API key, configure a source repository if desired, restart FastAPI, and choose **Live AI** when submitting. Redacted logs and collected source files are sent only to the selected provider. For OpenAI, Triage, analysis, fix generation, and report narration call `client.responses.parse` with Pydantic schemas. Evidence collection, retrieval, and validation remain deterministic application code inside the same LangGraph.
 
 The implementation follows the official [OpenAI structured outputs documentation](https://developers.openai.com/api/docs/guides/structured-outputs) and [LangGraph graph API](https://docs.langchain.com/oss/python/langgraph/graph-api). External text is supplied as untrusted data beneath system instructions, without tool or shell access. Evidence IDs and patch target paths are verified locally; generated explanations remain hypotheses requiring review.
 
-Live tests use mocked structured responses and provider failures. **An actual paid model request has not been verified in this workspace**, because no credentials were supplied. There is no silent fallback to demo results when live generation fails.
+OpenAI contract/failure tests use mocked responses; a real OpenAI request remains intentionally untested. A real Gemini investigation passed with the user-supplied key; see [the validation report](docs/gemini-validation.json). There is no silent fallback to demo results when live generation fails.
+
+### Google Gemini (AI Studio)
+
+The backend supports Gemini alongside OpenAI; a Gemini key must use `GEMINI_API_KEY`, not `OPENAI_API_KEY`. In the root `.env`:
+
+```dotenv
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your_private_key
+GEMINI_MODEL=gemini-3.5-flash-lite
+```
+
+Restart the backend (and a separate worker if used), then open **Settings → AI provider → Google Gemini** and save. New investigations snapshot the selected provider and model; existing investigations keep their original configuration. Older preferences without a provider inherit `LLM_PROVIDER`. Choose **Live AI · Google Gemini** for a real investigation; Demo makes no provider calls.
+
+Gemini uses the fixed Google GenerateContent endpoint, an API-key header, JSON-schema constrained responses, and local Pydantic validation. Keys and raw provider error bodies are never returned to the browser. Quota/access errors preserve partial evidence and explain the next step; there is no automatic paid-model or alternate-provider fallback. A successful live investigation normally makes four generation requests.
+
+The default model has a listed [free tier](https://aistudio.google.com/docs/pricing#gemini-3.5-flash-lite), subject to your project’s quotas and availability. The app cannot determine or change your Google billing tier. Keep the project on the free tier in AI Studio if zero cost is required. Google’s free-tier terms allow content to be used for product improvement; use synthetic or non-confidential evidence. [Google API reference](https://aistudio.google.com/api-reference/generate-content).
+
+Repeat a real check using only the bundled synthetic example:
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python scripts/validate_gemini.py --execute
+```
+
+This uses a temporary database, validates generated output and source references, and never executes AI-generated code on the host, approves a fix, or publishes a PR. Results are written to `docs/gemini-validation.json`.
 
 ### GitHub integration
 
@@ -236,6 +263,6 @@ The compose stack exposes the UI on `127.0.0.1:3000` and the API on `127.0.0.1:8
 - One durable consumer owns each SQLite database. This is not a distributed high-availability queue. Provider calls finish or time out before cancellation takes effect; test containers are bounded by their approved deadlines.
 - Database backups, disk encryption, retention policy, and server access control are the operator's responsibility.
 
-Remaining deferred verification: a real OpenAI request, intentionally skipped at the user’s request. Optional later expansions include SSO/tenant isolation, deployment/monitoring integrations, neural embeddings or pgvector, and non-Python test profiles. The current hybrid retriever uses curated concept vocabulary and TF-IDF cosine vectors over up to 500 recent records, combined with BM25 ranks; it does not claim neural semantic understanding.
+Live AI has now been verified with the user-selected Gemini provider on the bundled synthetic incident; see [the Gemini report](docs/gemini-validation.json). A real OpenAI request remains intentionally untested and is not needed to use Gemini. Optional later expansions include SSO/tenant isolation, deployment/monitoring integrations, neural embeddings or pgvector, and non-Python test profiles. The current hybrid retriever uses curated concept vocabulary and TF-IDF cosine vectors over up to 500 recent records, combined with BM25 ranks; it does not claim neural semantic understanding.
 
 Additional integration reports: [real two-file GitHub draft PR](docs/github-multifile-validation.json), [isolated unittest and pytest](docs/sandbox-validation.json). Repeat the container-stack check with `backend/.venv/bin/python scripts/validate_compose.py --execute`; it uses generated test credentials and removes only its own disposable stack.

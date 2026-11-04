@@ -46,7 +46,7 @@ def triage(state):
                     service='checkout.payment' if log == SAMPLE_LOG else 'Unconfirmed', message=message,
                     timestamps=re.findall(r'\d{4}-\d{2}-\d{2}T[\d:.]+Z', log), frames=frames).model_dump()
     if state['mode'] == 'live':
-        result = llm.generate(Triage, 'Classify the error, severity, and likely service from the log.', {'log': log}, state['config']['model'])
+        result = llm.generate(Triage, 'Classify the error, severity, and likely service from the log.', {'log': log}, state['config']['model'], state['config'].get('provider', 'openai'))
         # Locations are always parsed from the actual log, never invented by the model.
         result['frames'] = frames
     return result
@@ -88,7 +88,7 @@ def is_sample(state):
 def analysis(state):
     if state['mode'] == 'live':
         result = llm.generate(Analysis, 'Rank root cause hypotheses; cite provided evidence IDs and state uncertainty.',
-                              {k: state.get(k) for k in ('triage', 'evidence', 'memory')}, state['config']['model'])
+                              {k: state.get(k) for k in ('triage', 'evidence', 'memory')}, state['config']['model'], state['config'].get('provider', 'openai'))
     elif is_sample(state):
         ids = [e['id'] for e in state['evidence']]
         result = Analysis(observed_facts=['The submitted log reports ZeroDivisionError with discount=0.',
@@ -128,7 +128,7 @@ def fix(state):
             risks=['Changes the incorrect output for all nonzero discounts.', 'Floating-point currency arithmetic is still used; consider Decimal in a separate change.']).model_dump()
     else:
         suggestion = llm.generate(FixSuggestion, 'Propose a minimal fix to at most five collected source files. Return complete updated contents in files. Also set path and proposed_code to the first file for compatibility. Use empty files and an empty path if no safe fix is supported.',
-                                  {'analysis': state['analysis'], 'evidence': state.get('evidence', [])}, state['config']['model'])
+                                  {'analysis': state['analysis'], 'evidence': state.get('evidence', [])}, state['config']['model'], state['config'].get('provider', 'openai'))
         if not suggestion['path']:
             return {'available': False, 'reason': suggestion['explanation']}
     files = []
@@ -190,8 +190,10 @@ def report(state):
                  'next_steps': ['Review the proposed change and validation limitations.', 'Approve or reject the fix.', 'Run integration tests in your own isolated CI before merging.']}
     if state['mode'] == 'live' and state.get('analysis'):
         narrative = llm.generate(ReportNarrative, 'Summarize the investigation. Do not claim deployment or tests beyond the supplied validation results.',
-                                 {k: state.get(k) for k in ('analysis', 'validation', 'errors')}, state['config']['model'])
+                                 {k: state.get(k) for k in ('analysis', 'validation', 'errors')}, state['config']['model'], state['config'].get('provider', 'openai'))
     return {**narrative, 'incident_id': state['incident_id'], 'mode': state['mode'],
+            'provider': state['config'].get('provider', 'openai') if state['mode'] == 'live' else None,
+            'model': state['config']['model'] if state['mode'] == 'live' else None,
             'triage': state.get('triage', {}), 'analysis': state.get('analysis', {}),
             'evidence': state.get('evidence', []), 'history': state.get('memory', []),
             'affected_files': [e['path'] for e in state.get('evidence', []) if e['kind'] == 'source'],
@@ -219,7 +221,7 @@ def tracked(name, function):
             updates = {name: output}
         except Exception as exc:
             # Never store provider errors, prompts, credentials, or raw exception messages.
-            error = f'{name.title()} could not complete ({type(exc).__name__}). Check configuration and source availability; partial results are preserved.'
+            error = str(exc) if isinstance(exc, llm.ProviderError) else f'{name.title()} could not complete ({type(exc).__name__}). Check configuration and source availability; partial results are preserved.'
             output = {'error': error}
             updates = {'errors': state.get('errors', []) + [{'agent': name, 'message': error}]}
         with SessionLocal() as db:

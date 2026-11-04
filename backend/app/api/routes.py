@@ -18,6 +18,7 @@ from app.services.validation_runs import public_run, prepare_plan, check_plan, e
 from app.services.jobs import enqueue
 from app.schemas.contracts import Resolution, Reopen
 from app.services.patches import fix_files
+from app.services import llm
 
 router = APIRouter(prefix='/api')
 
@@ -55,7 +56,7 @@ def details(db, incident_id):
 @router.get('/health')
 def health(db: Session = Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status': 'ok', 'service': 'AutoRCA-X', 'live_available': bool(settings.openai_api_key)}
+    return {'status': 'ok', 'service': 'AutoRCA-X', 'live_available': llm.available(preferences(db)['provider'])}
 
 
 @router.get('/samples')
@@ -82,8 +83,9 @@ def repository_file(source: str, path: str = Query(max_length=500)):
 
 @router.post('/incidents', status_code=201)
 def create_incident(body: IncidentCreate, db: Session = Depends(get_db)):
-    if body.mode == 'live' and not settings.openai_api_key:
-        raise HTTPException(409, 'Live mode requires OPENAI_API_KEY in the backend environment.')
+    provider = preferences(db)['provider']
+    if body.mode == 'live' and not llm.available(provider):
+        raise HTTPException(409, f'Live mode requires {"GEMINI_API_KEY" if provider == "gemini" else "OPENAI_API_KEY"} in the backend environment.')
     if body.repository == 'local' and not settings.repository_root:
         raise HTTPException(409, 'Configure REPOSITORY_ROOT before selecting a local repository.')
     for path in body.selected_files:
@@ -342,7 +344,10 @@ def dashboard(db: Session = Depends(get_db)):
 
 @router.get('/settings')
 def read_settings(db: Session = Depends(get_db)):
-    return {**preferences(db), 'provider': 'OpenAI', 'live_available': bool(settings.openai_api_key),
+    current = preferences(db)
+    return {**current, 'live_available': llm.available(current['provider']),
+            'providers': [{'id': 'openai', 'name': 'OpenAI', 'available': llm.available('openai'), 'default_model': settings.openai_model},
+                          {'id': 'gemini', 'name': 'Google Gemini', 'available': llm.available('gemini'), 'default_model': settings.gemini_model}],
             'github_configured': bool(settings.github_token and settings.github_repository), 'github_repository': settings.github_repository,
             'local_repository_configured': bool(settings.repository_root), 'sandbox_available': sandbox.availability()['available']}
 
@@ -395,8 +400,8 @@ def authorize_validation(incident_id: str, run_id: str, body: ValidationAuthoriz
 
 @router.put('/settings')
 def save_settings(body: Preferences, db: Session = Depends(get_db)):
-    if body.default_mode == 'live' and not settings.openai_api_key:
-        raise HTTPException(409, 'Configure OPENAI_API_KEY before making Live AI the default.')
+    if body.default_mode == 'live' and not llm.available(body.provider):
+        raise HTTPException(409, 'Configure the selected provider API key before making Live AI the default.')
     row = db.get(AppPreference, 'default')
     if not row:
         row = AppPreference(id='default')

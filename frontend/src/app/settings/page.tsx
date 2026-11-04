@@ -25,6 +25,7 @@ export default function SettingsPage() {
   });
   const [form, setForm] = useState({
     model: "",
+    provider: "openai" as "openai" | "gemini",
     retrieval_limit: 5,
     retrieval_mode: "hybrid" as "keyword" | "hybrid",
     max_evidence_files: 5,
@@ -34,6 +35,7 @@ export default function SettingsPage() {
     if (data)
       setForm({
         model: data.model,
+        provider: data.provider,
         retrieval_limit: data.retrieval_limit,
         retrieval_mode: data.retrieval_mode,
         max_evidence_files: data.max_evidence_files,
@@ -46,6 +48,7 @@ export default function SettingsPage() {
     onSuccess: (result) => client.setQueryData(["settings"], result),
   });
   if (isPending) return <Loading />;
+  const selectedProvider = data?.providers.find((p) => p.id === form.provider);
   return (
     <>
       <div className="page-heading">
@@ -69,17 +72,44 @@ export default function SettingsPage() {
               <div className="panel-heading">
                 <div>
                   <h2>AI provider</h2>
-                  <p>Structured output through the OpenAI API</p>
+                  <p>Structured responses from your selected provider</p>
                 </div>
                 <Bot size={22} />
               </div>
               <div className="panel-body">
+                <label htmlFor="provider">AI provider</label>
+                <select
+                  id="provider"
+                  value={form.provider}
+                  onChange={(e) => {
+                    const provider = e.target.value as "openai" | "gemini";
+                    const option = data.providers.find(
+                      (p) => p.id === provider,
+                    )!;
+                    setForm({
+                      ...form,
+                      provider,
+                      model: option.default_model,
+                      default_mode: option.available
+                        ? form.default_mode
+                        : "demo",
+                    });
+                  }}
+                >
+                  {data.providers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
                 <div className="connection-row">
-                  <span>OpenAI API key</span>
+                  <span>{selectedProvider?.name} API key</span>
                   <span
-                    className={`connection ${data.live_available ? "connected" : ""}`}
+                    className={`connection ${selectedProvider?.available ? "connected" : ""}`}
                   >
-                    {data.live_available ? "Configured" : "Not configured"}
+                    {selectedProvider?.available
+                      ? "Configured"
+                      : "Not configured"}
                   </span>
                 </div>
                 <label htmlFor="retrieval-mode">Incident retrieval</label>
@@ -125,13 +155,17 @@ export default function SettingsPage() {
                   <option value="demo">
                     Demo · deterministic, no API calls
                   </option>
-                  <option value="live" disabled={!data.live_available}>
-                    Live AI · OpenAI
+                  <option value="live" disabled={!selectedProvider?.available}>
+                    Live AI · {selectedProvider?.name}
                   </option>
                 </select>
                 <p className="fine-print">
-                  Set OPENAI_API_KEY in the root .env file and restart the
-                  backend. The browser never receives the key.
+                  Set{" "}
+                  {form.provider === "gemini"
+                    ? "GEMINI_API_KEY"
+                    : "OPENAI_API_KEY"}{" "}
+                  in the root .env file and restart the backend. The browser
+                  never receives the key.
                 </p>
               </div>
             </section>

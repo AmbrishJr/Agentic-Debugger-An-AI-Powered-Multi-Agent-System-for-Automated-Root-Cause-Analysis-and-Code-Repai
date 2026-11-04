@@ -69,7 +69,16 @@ export default function NewInvestigation() {
     onSuccess: (incident) =>
       router.push(`/investigations/${incident.id}?start=1`),
   });
-  if (user?.role === "viewer") return <div className="panel panel-body"><h1>Read-only access</h1><p>An editor or administrator can start investigations. You can browse existing incidents and reports.</p></div>;
+  if (user?.role === "viewer")
+    return (
+      <div className="panel panel-body">
+        <h1>Read-only access</h1>
+        <p>
+          An editor or administrator can start investigations. You can browse
+          existing incidents and reports.
+        </p>
+      </div>
+    );
   return (
     <>
       <div className="page-heading">
@@ -182,7 +191,10 @@ export default function NewInvestigation() {
                     value="live"
                     disabled={!settings.data?.live_available}
                   >
-                    Live AI · OpenAI
+                    Live AI ·{" "}
+                    {settings.data?.provider === "gemini"
+                      ? "Google Gemini"
+                      : "OpenAI"}
                     {!settings.data?.live_available ? " · key required" : ""}
                   </option>
                 </select>
@@ -218,7 +230,7 @@ export default function NewInvestigation() {
               <p>
                 {mode === "demo"
                   ? "Demo Mode uses predefined logic for the bundled incident. No LLM calls are made. Other inputs produce a limited evidence report."
-                  : "Live AI sends redacted logs and selected source evidence to the configured OpenAI model. Review inputs before starting."}
+                  : `Live AI sends redacted logs and selected source evidence to ${settings.data?.provider === "gemini" ? "Google Gemini. Google may use free-tier content to improve its products" : "OpenAI"}. Review inputs before starting.`}
               </p>
             </div>
           </div>

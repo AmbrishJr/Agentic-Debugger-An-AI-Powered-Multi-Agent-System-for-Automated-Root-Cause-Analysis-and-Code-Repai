@@ -115,7 +115,13 @@ export type Settings = {
   retrieval_limit: number;
   max_evidence_files: number;
   default_mode: "demo" | "live";
-  provider: string;
+  provider: "openai" | "gemini";
+  providers: {
+    id: "openai" | "gemini";
+    name: string;
+    available: boolean;
+    default_model: string;
+  }[];
   live_available: boolean;
   github_configured: boolean;
   github_repository: string;

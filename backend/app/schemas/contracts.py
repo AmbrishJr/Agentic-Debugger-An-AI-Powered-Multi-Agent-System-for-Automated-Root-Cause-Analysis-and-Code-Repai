@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 Severity = Literal['critical', 'high', 'medium', 'low']
 
@@ -86,11 +86,18 @@ class Reopen(StrictModel):
 
 
 class Preferences(StrictModel):
+    provider: Literal['openai', 'gemini'] = 'openai'
     retrieval_mode: Literal['keyword', 'hybrid'] = 'hybrid'
     model: str = Field(default='gpt-4.1-mini', pattern=r'^[a-zA-Z0-9._:-]{1,100}$')
     retrieval_limit: int = Field(default=5, ge=1, le=10)
     max_evidence_files: int = Field(default=5, ge=1, le=10)
     default_mode: Literal['demo', 'live'] = 'demo'
+
+    @model_validator(mode='after')
+    def matching_provider(self):
+        if (self.provider == 'gemini') != self.model.startswith('gemini-'):
+            raise ValueError('Choose a model belonging to the selected provider.')
+        return self
 
 
 class PullRequestRequest(StrictModel):

@@ -7,6 +7,8 @@ import pytest
 _temporary = tempfile.TemporaryDirectory(prefix='autorca-tests-')
 os.environ['DATABASE_URL'] = 'sqlite:///' + str(Path(_temporary.name) / 'tests.db')
 os.environ['OPENAI_API_KEY'] = ''
+os.environ['GEMINI_API_KEY'] = ''
+os.environ['LLM_PROVIDER'] = 'openai'
 os.environ['GITHUB_TOKEN'] = ''
 os.environ['AUTORCA_API_TOKEN'] = ''
 os.environ['REPOSITORY_ROOT'] = ''

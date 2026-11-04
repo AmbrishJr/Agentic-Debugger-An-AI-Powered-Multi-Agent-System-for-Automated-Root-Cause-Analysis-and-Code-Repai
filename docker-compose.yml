@@ -10,6 +10,9 @@ services:
       DATABASE_URL: sqlite:////workspace/data/autorca.db
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
       GITHUB_BASE_BRANCH: ${GITHUB_BASE_BRANCH:-main}

@@ -92,11 +92,17 @@ test("settings save and dashboard renders stored analytics", async ({
   page,
 }) => {
   await page.goto("/settings");
+  await page.getByLabel("AI provider", { exact: true }).selectOption("gemini");
+  await expect(page.getByLabel("Model", { exact: true })).toHaveValue("gemini-3.5-flash-lite");
   await page.getByLabel("Maximum historical matches").fill("4");
   await page.getByRole("button", { name: "Save configuration" }).click();
   await expect(page.getByRole("status")).toContainText("Configuration saved");
   await page.reload();
+  await expect(page.getByLabel("AI provider", { exact: true })).toHaveValue("gemini");
   await expect(page.getByLabel("Maximum historical matches")).toHaveValue("4");
+  await page.getByLabel("AI provider", { exact: true }).selectOption("openai");
+  await page.getByRole("button", { name: "Save configuration" }).click();
+  await expect(page.getByRole("status")).toContainText("Configuration saved");
   await page.getByRole("link", { name: "Overview", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "From incident to insight." }),

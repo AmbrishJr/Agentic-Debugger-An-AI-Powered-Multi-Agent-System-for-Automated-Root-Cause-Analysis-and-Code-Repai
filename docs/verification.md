@@ -4,11 +4,11 @@ Verified locally with Python 3.10.14, Node.js 24.7.0, and Chromium through Playw
 
 | Check | Observed result |
 | --- | --- |
-| Backend pytest suite | 51 passing tests, including plan authorization, stale/expired plans, snapshot purging, one-use execution, policy changes, cleanup failure blocking, and existing workflows |
+| Backend pytest suite | 66 passing tests, including plan authorization, stale/expired plans, snapshot purging, one-use execution, policy changes, cleanup failure blocking, and existing workflows |
 | Frontend Vitest suite | 4 passing component tests |
 | TypeScript check | Passed |
 | Next.js production build | Passed using Webpack; all six UI screens and API proxy compiled |
-| Playwright | 5 passing browser workflows, including the real isolated Docker execution and review flow, desktop approval, mobile rejection, history, settings and dashboard |
+| Playwright | 6 passing browser workflows, including account creation and viewer restrictions, resolution/reopening/logout, real isolated Docker execution, desktop approval, mobile rejection, history, settings and dashboard |
 | Trusted sample before patch | Four tests executed: two failures and two errors, including the zero-discount exception (expected) |
 | Trusted sample after patch | Four tests passed |
 | npm dependency audit | Zero reported advisories after dependency updates |
@@ -29,4 +29,11 @@ The latest changes add authentication/CSRF/role tests, login throttling, resolut
 
 Real multi-file publishing also passed: [two-file draft PR](https://github.com/AmbrishJr/autorca-x-validation-464ff2e77dd6/pull/1), with an unchanged base and a retry returning the same PR. [Report](github-multifile-validation.json). The trusted runner now passes both unittest and pytest fixtures. A noisy-output cleanup timeout was fixed by closing the attach stream before removal, and the repeated real checks passed. The browser suite exposed an off-screen sign-out control; moving it into the toolbar fixed the interaction and preserved mobile layout.
 
-The initial administrator must be created locally using the command in [workspace operations](security.md). No production password was generated, no OpenAI key was changed, and no provider call was made. Synthetic integration credentials exist only in disposable verification environments.
+The initial administrator must be created locally using the command in [workspace operations](security.md). No production password was generated and no OpenAI key was changed. Provider calls were deferred in that release; the later Gemini check below uses only bundled synthetic evidence. Synthetic integration credentials exist only in disposable verification environments.
+
+
+## Gemini integration — November 5, 2026 (Asia/Kolkata)
+
+The user-supplied Gemini key passed a real seven-agent investigation using `gemini-3.5-flash-lite` and only the bundled synthetic checkout log/source. Structured triage, analysis, patch generation, and report narration completed; evidence references, allowed file paths, original hashes, and Python syntax were checked. The result reached `awaiting_review`. Validation remained `partial` because live generated code is not executed on the host; isolated tests require separate authorization. No approval, PR, or deployment occurred. [Credential-free Gemini report](gemini-validation.json).
+
+Additional backend tests cover provider preference migration, selected-provider availability, key isolation, Google-key redaction, schema-constrained requests, quota/access errors, refusal/truncation/invalid output handling, and preserving Gemini error details without raw provider responses. Both API keys are cleared in ordinary unit/browser tests. The production frontend and TypeScript checks pass with the new provider selector. All six browser workflows passed again, including switching to Gemini, persisting its model/provider settings, and switching back; four component tests also passed.

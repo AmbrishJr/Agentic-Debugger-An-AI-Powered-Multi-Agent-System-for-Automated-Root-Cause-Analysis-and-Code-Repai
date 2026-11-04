@@ -108,7 +108,7 @@ def test_live_provider_failure_preserves_partial_evidence(client, monkeypatch):
 def test_live_workflow_uses_structured_provider_and_skips_host_execution(client, monkeypatch):
     monkeypatch.setattr(settings, 'openai_api_key', 'test-only-not-a-real-key')
     calls = []
-    def structured(schema, task, payload, model):
+    def structured(schema, task, payload, model, provider='openai'):
         calls.append(schema.__name__)
         outputs = {
             'Triage': {'exception': 'ZeroDivisionError', 'severity': 'high', 'service': 'checkout', 'message': 'division by zero', 'timestamps': [], 'frames': []},

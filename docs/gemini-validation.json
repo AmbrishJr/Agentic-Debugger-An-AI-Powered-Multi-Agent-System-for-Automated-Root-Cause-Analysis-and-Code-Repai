@@ -1,0 +1,59 @@
+{
+  "status": "passed",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "checked_at": "2026-11-04T18:59:53.966531+00:00",
+  "scope": "Live structured generation on bundled synthetic evidence. No production logs/source, approval, publication, or generated-code execution.",
+  "incident_status": "awaiting_review",
+  "agents": [
+    {
+      "name": "triage",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "evidence",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "memory",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "analysis",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "fix",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "validation",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "report",
+      "status": "completed",
+      "error": null
+    }
+  ],
+  "changed_files": [
+    "checkout.py"
+  ],
+  "validation": "partial",
+  "checks": [
+    "Real Gemini authentication",
+    "Provider selection",
+    "Structured triage, analysis, patch, and report",
+    "Evidence citations validated",
+    "Collected patch paths and source hashes verified",
+    "Proposed Python syntax parsed without execution",
+    "Repository tests honestly skipped pending isolated authorization",
+    "Report available before human review"
+  ]
+}

@@ -5,4 +5,11 @@ from app.schemas.contracts import Preferences
 
 def preferences(db):
     row = db.get(AppPreference, 'default')
-    return Preferences(**(row.values if row else {'model': settings.openai_model})).model_dump()
+    values = dict(row.values) if row else {}
+    # Existing pre-provider preferences inherit the operator's selected provider.
+    if 'provider' not in values:
+        values['provider'] = settings.llm_provider
+        if values['provider'] == 'gemini':
+            values['model'] = settings.gemini_model
+    values.setdefault('model', settings.gemini_model if values['provider'] == 'gemini' else settings.openai_model)
+    return Preferences(**values).model_dump()

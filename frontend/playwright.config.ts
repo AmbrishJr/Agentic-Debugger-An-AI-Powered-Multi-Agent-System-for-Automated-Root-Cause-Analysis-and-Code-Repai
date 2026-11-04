@@ -16,6 +16,8 @@ export default defineConfig({
       env: {
         DATABASE_URL: "sqlite:///./test-results/e2e.db",
         OPENAI_API_KEY: "",
+        GEMINI_API_KEY: "",
+        LLM_PROVIDER: "openai",
         GITHUB_TOKEN: "",
         AUTORCA_API_TOKEN: "",
         AUTH_ENABLED: "true",
