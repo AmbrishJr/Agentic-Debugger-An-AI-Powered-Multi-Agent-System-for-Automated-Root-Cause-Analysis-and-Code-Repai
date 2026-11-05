@@ -26,6 +26,7 @@ FastAPI exposes OpenAPI at `/openapi.json` and interactive docs at `/docs`. JSON
 | POST | `/api/incidents/{id}/validation-plans` | Prepare a bounded immutable snapshot from `files` and optional `profile` (`python-unittest` or `python-pytest`) |
 | GET | `/api/incidents/{id}/validation-runs` | Credential-free manifests, authorization, and results |
 | POST | `/api/incidents/{id}/validation-runs/{run_id}/authorize` | Require `authorized: true` and the exact `plan_hash`; return 202 |
+| POST | `/api/incidents/{id}/validation-runs/{run_id}/cleanup` | Retry destruction for a `cleanup_failed` run; never rerun tests |
 
 All mutation requests require `Content-Type: application/json`, including empty `{}` bodies. Request bodies are limited to 100 KB; error logs to 50,000 characters and source files to 80 KB. If `AUTORCA_API_TOKEN` is configured, supply `X-AutoRCA-Token` from trusted server callers. The frontend proxy attaches its matching server-only token. Use loopback binding; workspace sessions and roles are enforced by default. Login with `/api/auth/login`; send its HttpOnly cookie and `X-CSRF-Token` on mutations. `/api/auth/me` returns the current session and CSRF token.
 

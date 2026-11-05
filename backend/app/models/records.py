@@ -23,6 +23,8 @@ class Incident(Base):
     mode: Mapped[str] = mapped_column(String, default='demo')
     repository: Mapped[str] = mapped_column(String, default='sample')
     selected_files: Mapped[list] = mapped_column(JSON, default=list)
+    repository_commit: Mapped[str] = mapped_column(String, default='')
+    repository_name: Mapped[str] = mapped_column(String, default='')
     created_at: Mapped[str] = mapped_column(String, default=now, index=True)
     updated_at: Mapped[str] = mapped_column(String, default=now)
     resolution_note: Mapped[str] = mapped_column(Text, default='')
@@ -157,6 +159,8 @@ class Job(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(String, default=now)
     updated_at: Mapped[str] = mapped_column(String, default=now)
+    dispatch_token: Mapped[str] = mapped_column(String, default=uid)
+    workflow_run_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class WorkerState(Base):

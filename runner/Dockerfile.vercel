@@ -1,0 +1,7 @@
+# Build only this trusted infrastructure image, then publish it to Vercel Container Registry.
+FROM python:3.12-slim
+RUN pip install --no-cache-dir pytest==8.3.5
+COPY bootstrap.py cloud_bootstrap.py /opt/autorca/
+RUN chmod 0555 /opt/autorca/*.py && mkdir -p /workspace && chown 65534:65534 /workspace
+USER 65534:65534
+WORKDIR /workspace

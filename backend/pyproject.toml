@@ -1,0 +1,31 @@
+[project]
+name = "autorca-backend"
+version = "0.1.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "fastapi==0.115.12",
+  "uvicorn[standard]==0.34.2",
+  "pydantic==2.14.2",
+  "pydantic-settings==2.9.1",
+  "SQLAlchemy==2.0.41",
+  "alembic==1.15.2",
+  "langgraph==0.4.5",
+  "openai==1.82.0",
+  "httpx==0.28.1",
+  "psycopg[binary]==3.3.8",
+  "vercel-workflow==0.12.1",
+  "vercel-sandbox==0.11.0",
+]
+
+[dependency-groups]
+dev = ["pytest==8.3.5"]
+
+[tool.pytest.ini_options]
+# The deliberately buggy demo fixtures are evidence, not part of the test suite.
+testpaths = ["tests"]
+
+[[tool.vercel.workflows]]
+entrypoint = "app.cloud_workflows:wf"
+
+[tool.uv]
+package = false

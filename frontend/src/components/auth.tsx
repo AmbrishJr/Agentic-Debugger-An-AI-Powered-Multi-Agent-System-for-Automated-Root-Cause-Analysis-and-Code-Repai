@@ -15,6 +15,7 @@ type Session = {
   enabled: boolean;
   user: User | null;
   setup_required?: boolean;
+  deployment?: "local" | "vercel";
 };
 const AuthContext = createContext<Session>({ enabled: false, user: null });
 export const useAuth = () => useContext(AuthContext);
@@ -63,6 +64,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           <div className="inline-notice">
             <div>
               <strong>Create your first administrator</strong>
+              {session.data.deployment === "vercel" ? (
+                <p>The workspace administrator needs to finish database setup before sign-in is available.</p>
+              ) : <>
               <p>
                 Run this command in the project root, then choose a
                 username and password locally.
@@ -77,6 +81,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   --username admin
                 </code>
               </p>
+              </>}
               <Button variant="outline" onClick={() => session.refetch()}>
                 Check setup
               </Button>

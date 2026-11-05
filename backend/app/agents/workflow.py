@@ -5,11 +5,11 @@ from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
 from sqlalchemy import select
 from app.db.session import SessionLocal
-from app.models.records import Incident, Investigation, AgentExecution, ProposedFix, now
+from app.models.records import Incident, Investigation, AgentExecution, ProposedFix, Job, now
 from app.schemas.contracts import Triage, Evidence, Analysis, FixSuggestion, ReportNarrative
 from app.services import llm
 from app.services.memory import FTSRetriever, HybridRetriever, remember
-from app.services.security import read_source, list_files, digest, redact
+from app.services.security import read_source, list_files, digest, redact, incident_source
 from app.services.sample import BUGGY, FIXED, SAMPLE_LOG
 from app.services.validation import validate
 from app.services.patches import unified_patch
@@ -254,26 +254,39 @@ builder.add_edge(AGENTS[-1] + '_agent', END)
 graph = builder.compile()
 
 
-def run_investigation(incident_id: str, job_id: str = ''):
+def load_state(incident_id: str, job_id: str = ''):
     with SessionLocal() as db:
         incident = db.get(Incident, incident_id)
         inv = db.scalar(select(Investigation).where(Investigation.incident_id == incident_id))
         state = WorkflowState(incident_id=incident_id, investigation_id=inv.id, job_id=job_id, mode=incident.mode,
-            repository=incident.repository, error_log=incident.error_log, selected_files=incident.selected_files,
+            repository=incident_source(incident), error_log=incident.error_log, selected_files=incident.selected_files,
             config=inv.config, errors=[])
         state.update({k: v for k, v in inv.analysis_results.items() if k in AGENTS or k == 'errors'})
+    return state
+
+
+def finish_investigation(result, job_id=None):
+    with SessionLocal() as db:
+        incident, inv = db.get(Incident, result['incident_id']), db.get(Investigation, result['investigation_id'])
+        has_fix = result.get('fix', {}).get('available', False)
+        incident.status = 'partial' if result.get('errors') else ('awaiting_review' if has_fix else 'needs_evidence')
+        incident.updated_at = now()
+        inv.agent_status = 'completed'
+        inv.analysis_results = {k: v for k, v in result.items() if k in AGENTS or k == 'errors'}
+        if result.get('analysis') and not result.get('errors') and has_fix:
+            remember(db, incident, result['analysis'], result.get('triage', {}))
+        if job_id:
+            job = db.get(Job, job_id)
+            job.status = 'failed' if result.get('errors') else 'completed'
+            job.error = 'Inspect the saved results before retrying.' if result.get('errors') else None
+            job.updated_at = now()
+        db.commit()
+
+
+def run_investigation(incident_id: str, job_id: str = ""):
+    state = load_state(incident_id, job_id)
     try:
-        result = graph.invoke(state)
-        with SessionLocal() as db:
-            incident, inv = db.get(Incident, incident_id), db.get(Investigation, state['investigation_id'])
-            has_fix = result.get('fix', {}).get('available', False)
-            incident.status = 'partial' if result.get('errors') else ('awaiting_review' if has_fix else 'needs_evidence')
-            incident.updated_at = now()
-            inv.agent_status = 'completed'
-            inv.analysis_results = {k: v for k, v in result.items() if k in AGENTS or k == 'errors'}
-            if result.get('analysis') and not result.get('errors') and has_fix:
-                remember(db, incident, result['analysis'], result.get('triage', {}))
-            db.commit()
+        finish_investigation(graph.invoke(state))
     except JobCancelled:
         raise
     except Exception:

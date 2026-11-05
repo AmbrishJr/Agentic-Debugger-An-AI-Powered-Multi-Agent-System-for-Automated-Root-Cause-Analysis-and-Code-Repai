@@ -5,10 +5,10 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select, update, func, or_, text
 from sqlalchemy.orm import Session
 from app.core.config import settings
-from app.db.session import get_db, SessionLocal
-from app.models.records import Incident, Investigation, ProposedFix, AgentExecution, IncidentMemory, AppPreference, ValidationRun, Job, IncidentEvent, now
+from app.db.session import get_db, SessionLocal, serialize_write
+from app.models.records import Incident, Investigation, ProposedFix, AgentExecution, IncidentMemory, AppPreference, ValidationRun, Job, IncidentEvent, now, uid
 from app.schemas.contracts import IncidentCreate, Decision, Preferences, PullRequestRequest, ValidationPlanRequest, ValidationAuthorization
-from app.services.security import redact, list_files, read_source, digest
+from app.services.security import redact, list_files, read_source, digest, incident_source
 from app.services.sample import SAMPLE_LOG
 from app.services.preferences import preferences
 from app.services.github import create_pull_request
@@ -16,6 +16,7 @@ from app.agents.workflow import run_investigation, AGENTS
 from app.services import sandbox
 from app.services.validation_runs import public_run, prepare_plan, check_plan, execute_validation, expire_plans
 from app.services.jobs import enqueue
+from app.services.memory import update_memory_index
 from app.schemas.contracts import Resolution, Reopen
 from app.services.patches import fix_files
 from app.services import llm
@@ -68,7 +69,8 @@ def samples():
 @router.get('/repositories')
 def repositories():
     return {'items': [{'id': 'sample', 'name': 'Bundled checkout application', 'available': True},
-                      {'id': 'local', 'name': 'Configured local repository', 'available': bool(settings.repository_root)}]}
+                      {'id': 'local', 'name': 'Configured local repository', 'available': bool(settings.repository_root)},
+                      {'id': 'github', 'name': 'Configured GitHub repository', 'available': bool(settings.github_repository and settings.github_token)}]}
 
 
 @router.get('/repositories/{source}/files')
@@ -88,11 +90,18 @@ def create_incident(body: IncidentCreate, db: Session = Depends(get_db)):
         raise HTTPException(409, f'Live mode requires {"GEMINI_API_KEY" if provider == "gemini" else "OPENAI_API_KEY"} in the backend environment.')
     if body.repository == 'local' and not settings.repository_root:
         raise HTTPException(409, 'Configure REPOSITORY_ROOT before selecting a local repository.')
+    commit = ''
+    if body.repository == 'github':
+        from app.services.github_source import revision
+        commit = revision()
+    source = 'github@' + commit if commit else body.repository
     for path in body.selected_files:
-        read_source(body.repository, path)
+        read_source(source, path)
     record = Incident(**{**body.model_dump(), 'title': redact(body.title.strip()), 'error_log': redact(body.error_log)})
     if len(record.title) < 3:
         raise HTTPException(422, 'Title must contain at least three non-whitespace characters.')
+    record.repository_commit = commit
+    record.repository_name = settings.github_repository if commit else ''
     db.add(record)
     db.commit()
     return serialized(record)
@@ -114,12 +123,17 @@ def list_incidents(q: str = Query('', max_length=200), severity: str = '', statu
 
 
 @router.get('/incidents/{incident_id}')
-def incident_detail(incident_id: str, db: Session = Depends(get_db)):
+async def incident_detail(incident_id: str, db: Session = Depends(get_db)):
+    if settings.job_execution == 'vercel':
+        from app.services.cloud_jobs import refresh
+        for job_id in db.scalars(select(Job.id).where(Job.incident_id == incident_id, Job.status.in_(('queued', 'running')))):
+            await refresh(job_id)
+        db.expire_all()
     return details(db, incident_id)
 
 
 @router.post('/incidents/{incident_id}/investigate', status_code=202)
-def investigate(incident_id: str, tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def investigate(incident_id: str, tasks: BackgroundTasks, db: Session = Depends(get_db)):
     incident_or_404(db, incident_id)
     # Compare-and-swap prevents concurrent starts even with multiple request threads.
     claimed = db.execute(update(Incident).where(Incident.id == incident_id, Incident.status == 'submitted').values(status='investigating', updated_at=now()))
@@ -129,6 +143,9 @@ def investigate(incident_id: str, tasks: BackgroundTasks, db: Session = Depends(
     db.add(Investigation(incident_id=incident_id, config=preferences(db)))
     job = enqueue(db, 'investigation', incident_id, incident_id, tasks)
     db.commit()
+    if settings.job_execution == 'vercel':
+        from app.services.cloud_jobs import dispatch
+        await dispatch(job.id)
     return {'incident_id': incident_id, 'status': 'investigating', 'job_id': job.id}
 
 
@@ -180,6 +197,7 @@ def patch(incident_id: str, db: Session = Depends(get_db)):
 
 
 def decide(incident_id, decision, body, db, actor='local developer'):
+    serialize_write(db, 'validation-slot')
     incident = incident_or_404(db, incident_id)
     fix = get_fix(db, incident_id)
     if fix.validation_result.get('status') == 'running':
@@ -189,7 +207,7 @@ def decide(incident_id, decision, body, db, actor='local developer'):
     if decision == 'approved':
         if fix.validation_result.get('status') not in ('passed', 'partial'):
             raise HTTPException(409, 'Approval requires completed validation without failed checks.')
-        if any(digest(read_source(incident.repository, f['path'])) != f['original_sha256'] for f in fix_files(fix)):
+        if any(digest(read_source(incident_source(incident), f['path'])) != f['original_sha256'] for f in fix_files(fix)):
             raise HTTPException(409, 'Source changed since investigation. Submit a new incident.')
     changed = db.execute(update(ProposedFix).where(ProposedFix.id == fix.id, ProposedFix.approval_status == 'pending',
         ProposedFix.validation_result['status'].as_string() != 'running').values(
@@ -203,7 +221,7 @@ def decide(incident_id, decision, body, db, actor='local developer'):
     if memory:
         memory.retrieval_metadata = {**memory.retrieval_metadata, 'approval': decision}
         memory.resolution_summary = f'Human {decision}; not deployed. ' + fix.explanation
-        db.execute(text('UPDATE memory_fts SET resolution_summary=:summary WHERE incident_id=:id'), {'summary': memory.resolution_summary, 'id': incident_id})
+        update_memory_index(db, memory)
     db.commit()
     return details(db, incident_id)
 
@@ -234,7 +252,7 @@ def resolve_incident(incident_id: str, body: Resolution, request: Request, db: S
     if memory:
         memory.resolution_summary = 'Human-confirmed resolution: ' + redact(body.note)
         memory.retrieval_metadata = {**memory.retrieval_metadata, 'resolved': True, 'evidence': redact(body.evidence)}
-        db.execute(text('UPDATE memory_fts SET resolution_summary=:summary WHERE incident_id=:id'), {'summary': memory.resolution_summary, 'id': incident_id})
+        update_memory_index(db, memory)
     db.commit()
     db.expire_all()
     return details(db, incident_id)
@@ -254,7 +272,7 @@ def reopen_incident(incident_id: str, body: Reopen, request: Request, db: Sessio
     if memory:
         memory.resolution_summary = 'Reopened; previous resolution is no longer confirmed. ' + redact(body.note)
         memory.retrieval_metadata = {**memory.retrieval_metadata, 'resolved': False}
-        db.execute(text('UPDATE memory_fts SET resolution_summary=:summary WHERE incident_id=:id'), {'summary': memory.resolution_summary, 'id': incident_id})
+        update_memory_index(db, memory)
     db.commit()
     db.expire_all()
     return details(db, incident_id)
@@ -262,7 +280,7 @@ def reopen_incident(incident_id: str, body: Reopen, request: Request, db: Sessio
 
 @router.post('/jobs/{job_id}/cancel')
 def cancel_job(job_id: str, db: Session = Depends(get_db)):
-    db.connection().exec_driver_sql('BEGIN IMMEDIATE')
+    serialize_write(db, 'job:' + job_id)
     job = db.get(Job, job_id)
     if not job or job.kind != 'investigation' or job.status not in ('queued', 'running'):
         raise HTTPException(409, 'Only an active investigation can be cancelled. Isolated tests have a bounded deadline.')
@@ -275,8 +293,8 @@ def cancel_job(job_id: str, db: Session = Depends(get_db)):
 
 
 @router.post('/jobs/{job_id}/retry', status_code=202)
-def retry_job(job_id: str, tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    db.connection().exec_driver_sql('BEGIN IMMEDIATE')
+async def retry_job(job_id: str, tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    serialize_write(db, 'job:' + job_id)
     job = db.get(Job, job_id)
     if not job or job.kind != 'investigation' or job.status not in ('failed', 'cancelled') or job.attempts >= 3:
         raise HTTPException(409, 'Only failed or cancelled investigations below three attempts can be retried.')
@@ -290,24 +308,38 @@ def retry_job(job_id: str, tasks: BackgroundTasks, db: Session = Depends(get_db)
         fix.validation_result = {'status': 'regenerate', 'checks': [], 'limitations': 'Upstream analysis is being retried. This proposal cannot be approved until regenerated and validated.'}
     inv.analysis_results = {k: v for k, v in inv.analysis_results.items() if k in AGENTS[:first]}
     job.status, job.cancel_requested, job.error, job.updated_at = 'queued', False, None, now()
+    job.dispatch_token, job.workflow_run_id = uid(), None
     db.get(Incident, job.incident_id).status = 'investigating'
     if settings.job_execution == 'inline':
         from app.services.jobs import run_job
         tasks.add_task(run_job, job.id)
     db.commit()
+    if settings.job_execution == 'vercel':
+        from app.services.cloud_jobs import dispatch
+        await dispatch(job.id)
+        db.refresh(job)
     return serialized(job)
 
 
 @router.post('/incidents/{incident_id}/pull-request')
 def pull_request(incident_id: str, body: PullRequestRequest, db: Session = Depends(get_db)):
+    from app.services.cloud_jobs import execution_lock
+    # The separate PostgreSQL transaction holds this lock across GitHub requests
+    # and releases it automatically if the Vercel function is interrupted.
+    with execution_lock('pull-request:' + incident_id):
+        return publish_reviewed_fix(incident_id, db)
+
+
+def publish_reviewed_fix(incident_id, db):
     incident, fix = incident_or_404(db, incident_id), get_fix(db, incident_id)
     if fix.approval_status != 'approved':
         raise HTTPException(409, 'Approve the reviewed fix before authorizing a pull request.')
     if fix.pr_url:
         return {'url': fix.pr_url}
-    if not settings.github_token or not settings.github_repository or incident.repository != 'local':
-        raise HTTPException(409, 'A configured GitHub target and local repository are required.')
-    claimed = db.execute(update(ProposedFix).where(ProposedFix.id == fix.id, ProposedFix.pr_status != 'creating').values(pr_status='creating'))
+    if not settings.github_token or not settings.github_repository or incident.repository not in ('local', 'github'):
+        raise HTTPException(409, 'A configured GitHub target and a local or GitHub source are required.')
+    available = True if db.get_bind().dialect.name == 'postgresql' else ProposedFix.pr_status != 'creating'
+    claimed = db.execute(update(ProposedFix).where(ProposedFix.id == fix.id, available).values(pr_status='creating'))
     if claimed.rowcount != 1:
         db.rollback()
         raise HTTPException(409, 'A pull request operation is already in progress.')
@@ -349,6 +381,7 @@ def read_settings(db: Session = Depends(get_db)):
             'providers': [{'id': 'openai', 'name': 'OpenAI', 'available': llm.available('openai'), 'default_model': settings.openai_model},
                           {'id': 'gemini', 'name': 'Google Gemini', 'available': llm.available('gemini'), 'default_model': settings.gemini_model}],
             'github_configured': bool(settings.github_token and settings.github_repository), 'github_repository': settings.github_repository,
+            'job_execution': settings.job_execution, 'sandbox_provider': settings.sandbox_provider,
             'local_repository_configured': bool(settings.repository_root), 'sandbox_available': sandbox.availability()['available']}
 
 
@@ -375,7 +408,8 @@ def validation_plan(incident_id: str, body: ValidationPlanRequest, db: Session =
 
 
 @router.post('/incidents/{incident_id}/validation-runs/{run_id}/authorize', status_code=202)
-def authorize_validation(incident_id: str, run_id: str, body: ValidationAuthorization, tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def authorize_validation(incident_id: str, run_id: str, body: ValidationAuthorization, tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    serialize_write(db, 'validation-slot')
     incident, fix = incident_or_404(db, incident_id), get_fix(db, incident_id)
     run = db.get(ValidationRun, run_id)
     if not run or run.incident_id != incident_id:
@@ -388,14 +422,41 @@ def authorize_validation(incident_id: str, run_id: str, body: ValidationAuthoriz
         ProposedFix.validation_result['status'].as_string() != 'running').values(validation_result={**fix.validation_result, 'status': 'running'}))
     if claimed.rowcount != 1 or db.scalar(select(func.count()).select_from(ValidationRun).where(ValidationRun.status.in_(('running', 'cleanup_failed')))):
         db.rollback()
-        raise HTTPException(409, 'Another isolated run is active or needs container cleanup. Finish cleanup and restart the backend before retrying.')
+        raise HTTPException(409, 'Another isolated run is active or needs cleanup. Finish it or retry its cleanup before authorizing another test.')
     claimed_run = db.execute(update(ValidationRun).where(ValidationRun.id == run_id, ValidationRun.status == 'planned').values(status='running', authorized_at=now()))
     if claimed_run.rowcount != 1:
         db.rollback()
         raise HTTPException(409, 'This plan has already been authorized.')
-    enqueue(db, 'validation', run_id, incident_id, tasks)
+    job = enqueue(db, 'validation', run_id, incident_id, tasks)
     db.commit()
+    if settings.job_execution == 'vercel':
+        from app.services.cloud_jobs import dispatch
+        await dispatch(job.id)
     return {'id': run_id, 'status': 'running'}
+
+
+@router.post('/incidents/{incident_id}/validation-runs/{run_id}/cleanup')
+def cleanup_validation(incident_id: str, run_id: str, db: Session = Depends(get_db)):
+    serialize_write(db, 'validation-slot')
+    run = db.get(ValidationRun, run_id)
+    if not run or run.incident_id != incident_id:
+        raise HTTPException(404, 'Validation run not found.')
+    if run.status != 'cleanup_failed':
+        raise HTTPException(409, 'Only a run with failed cleanup can be cleaned again.')
+    if run.policy.get('provider', 'docker') != settings.sandbox_provider:
+        raise HTTPException(409, 'Restore the original sandbox provider before retrying cleanup.')
+    cleaned = all([sandbox.cleanup(sandbox.container_name(run.id, phase)) for phase in ('before', 'after')])
+    if not cleaned:
+        raise HTTPException(503, 'Cleanup still cannot be confirmed. Check the sandbox provider before retrying.')
+    run.status, run.snapshot, run.finished_at = 'error', {}, now()
+    run.result = {**run.result, 'cleanup_succeeded': True, 'cleanup_retried_at': now()}
+    for phase in ('before', 'after'):
+        if phase in run.result:
+            run.result = {**run.result, phase: {**run.result[phase], 'cleanup_succeeded': True}}
+    fix = db.get(ProposedFix, run.fix_id)
+    fix.validation_result = {**fix.validation_result, 'status': 'error', 'isolated': run.result}
+    db.commit()
+    return public_run(run)
 
 
 @router.put('/settings')

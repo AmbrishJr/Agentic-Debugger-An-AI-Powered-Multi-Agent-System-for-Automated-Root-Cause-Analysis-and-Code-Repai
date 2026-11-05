@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from app.db.session import SessionLocal
 from app.models.records import Incident, ProposedFix, ValidationRun, now, uid
-from app.services.security import read_source, digest, redact
+from app.services.security import read_source, digest, redact, incident_source
 from app.services import sandbox
 from app.services.patches import fix_files
 
@@ -40,7 +40,7 @@ def prepare_plan(incident, fix, paths, profile='python-unittest'):
     for path in paths:
         if not path.endswith('.py'):
             raise ValueError('This runner profile accepts Python source and test files only.')
-        source = read_source(incident.repository, path)
+        source = read_source(incident_source(incident), path)
         if redact(source) != source:
             raise ValueError('Secret-like content in a selected file prevents creating a test snapshot.')
         snapshot[path] = source
@@ -68,7 +68,7 @@ def check_plan(incident, fix, run, expected_hash):
     if fix.approval_status != 'pending' or incident.status not in ('awaiting_review', 'partial'):
         raise ValueError('Tests must be authorized before the final review decision.')
     for item in run.manifest:
-        if digest(read_source(incident.repository, item['path'])) != item['sha256']:
+        if digest(read_source(incident_source(incident), item['path'])) != item['sha256']:
             raise ValueError('A source or test file changed after planning. Prepare a new snapshot.')
 
 
@@ -90,7 +90,7 @@ def execute_validation(run_id):
         else:
             after = sandbox.run_snapshot(run_id, 'after', proposed, policy)
         result = {'before': before, 'after': after, 'policy': policy,
-                  'interpretation': 'Container exit status is measured. Repository test output and counts are untrusted evidence, not proof of correctness or coverage.'}
+                  'interpretation': 'Isolated process exit status is measured. Repository test output and counts are untrusted evidence, not proof of correctness or coverage.'}
         state = 'completed' if after['status'] in ('passed', 'failed') else 'error'
         status = after['status'] if state == 'completed' else 'error'
         if before.get('cleanup_succeeded') is False or after.get('cleanup_succeeded') is False:
@@ -113,6 +113,8 @@ def execute_validation(run_id):
         run.status, run.finished_at, run.result = state, now(), result
         # Drop snapshot bodies after execution; keep audit manifest and hash.
         run.snapshot = {}
+        boundary = ('Vercel microVM with denied network access and no application credentials. ' if policy.get('provider') == 'vercel'
+                    else 'Resource-limited Docker containers are not a VM security boundary on Linux. ')
         fix.validation_result = {**fix.validation_result, 'status': status, 'checks': checks, 'isolated_run_id': run_id,
-            'isolated': result, 'limitations': 'Resource-limited Docker containers are not a VM security boundary on Linux. Repository tests and their outputs can be misleading; independent code review remains required.'}
+            'isolated': result, 'limitations': boundary + 'Repository tests and their outputs can be misleading; independent code review remains required.'}
         db.commit()

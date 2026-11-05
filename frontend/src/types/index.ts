@@ -6,6 +6,7 @@ export type Incident = {
   status: string;
   mode: "demo" | "live";
   repository: string;
+  repository_commit?: string;
   created_at: string;
   updated_at: string;
 };

@@ -4,6 +4,9 @@
 **/node_modules
 **/.next
 **/.venv
+**/.venv-cloud
+**/.vercel
+**/.workflow-data
 **/__pycache__
 **/.pytest_cache
 **/test-results

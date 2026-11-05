@@ -249,7 +249,7 @@ export default function SettingsPage() {
                 )}
                 <p className="fine-print">
                   Configure GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_BASE_BRANCH,
-                  and REPOSITORY_ROOT in the backend environment. The reviewed
+                  in the backend environment. Local development can also use REPOSITORY_ROOT. The reviewed
                   file must match the GitHub base version before publishing.
                 </p>
               </div>
@@ -275,7 +275,7 @@ export default function SettingsPage() {
                 </div>
                 <p className="fine-print">
                   {data.sandbox_available
-                    ? "The isolated Docker runner is ready. Prepare a source snapshot and authorize its test plan in the fix review screen."
+                    ? "The isolated runner is configured. Prepare a source snapshot and authorize its test plan in the fix review screen."
                     : "The isolated runner is unavailable. Repository tests remain skipped until it is configured and a test plan is authorized."}{" "}
                   See docs/sandbox.md for setup, resource limits, and the
                   isolation boundary.

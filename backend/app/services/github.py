@@ -44,9 +44,11 @@ def commit_multiple(client, request, branch, sha, incident, files):
 def create_pull_request(incident, fix) -> str:
     if not settings.github_token or not settings.github_repository:
         raise ValueError('Configure GITHUB_TOKEN and GITHUB_REPOSITORY on the backend.')
-    if incident.repository != 'local':
-        raise ValueError('GitHub publishing is limited to the configured local repository.')
+    if incident.repository not in ('local', 'github'):
+        raise ValueError('GitHub publishing requires the configured local or GitHub source.')
     repository = settings.github_repository
+    if incident.repository == 'github' and incident.repository_name != repository:
+        raise ValueError('The GitHub target differs from the incident repository.')
     if len(repository.split('/')) != 2 or any(not p or not all(c.isalnum() or c in '._-' for c in p) for p in repository.split('/')):
         raise ValueError('GITHUB_REPOSITORY must be owner/repository.')
     with httpx.Client(base_url=f'https://api.github.com/repos/{repository}/', timeout=30,
@@ -63,6 +65,8 @@ def create_pull_request(incident, fix) -> str:
             return existing[0]['html_url']
         base = request('GET', 'git/ref/heads/' + quote(settings.github_base_branch, safe=''))
         sha = base['object']['sha']
+        if incident.repository == 'github' and sha != incident.repository_commit:
+            raise ValueError('The GitHub base branch changed since investigation. Investigate its current revision before publishing.')
         if len(fix_files(fix)) > 1:
             commit_multiple(client, request, branch, sha, incident, fix_files(fix))
         else:

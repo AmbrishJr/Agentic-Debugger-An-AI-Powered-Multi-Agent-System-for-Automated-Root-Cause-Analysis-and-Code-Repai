@@ -1,0 +1,13 @@
+.venv/
+.venv-cloud/
+.env*
+!.env.vercel.example
+tests/
+__pycache__/
+.pytest_cache/
+*.db*
+data/
+.workflow-data/
+# Local/Docker manifests; Vercel uses the cloud pyproject.toml and uv.lock.
+requirements.txt
+requirements.lock

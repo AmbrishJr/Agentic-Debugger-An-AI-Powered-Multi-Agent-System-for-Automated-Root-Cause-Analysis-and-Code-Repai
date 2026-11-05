@@ -30,6 +30,9 @@ def control(args, timeout=10):
 
 
 def availability():
+    if settings.sandbox_provider == 'vercel':
+        from app.services import vercel_sandbox
+        return vercel_sandbox.availability()
     if not settings.sandbox_enabled:
         return {'available': False, 'reason': 'Set SANDBOX_ENABLED=true and configure a trusted image ID.'}
     if not re.fullmatch(r'sha256:[a-f0-9]{64}', settings.sandbox_image):
@@ -58,6 +61,9 @@ def availability():
 def policy(profile='python-unittest'):
     if profile not in ('python-unittest', 'python-pytest'):
         raise ValueError('Unsupported test profile.')
+    if settings.sandbox_provider == 'vercel':
+        from app.services import vercel_sandbox
+        return vercel_sandbox.policy(profile)
     return {'version': 1, 'image': settings.sandbox_image, 'docker_context': settings.sandbox_docker_context,
             'profile': profile,
             'command': ['python', '-I', '-B', '/opt/autorca/bootstrap.py', profile],
@@ -74,6 +80,9 @@ def container_name(run_id, phase):
 
 
 def cleanup(name):
+    if settings.sandbox_provider == 'vercel':
+        from app.services import vercel_sandbox
+        return vercel_sandbox.cleanup(name)
     try:
         result = control(['rm', '--force', name])
         # A missing container is already clean, but daemon/permission errors are not.
@@ -83,6 +92,9 @@ def cleanup(name):
 
 
 def run_snapshot(run_id: str, phase: str, files: dict, approved_policy: dict) -> dict:
+    if settings.sandbox_provider == 'vercel':
+        from app.services import vercel_sandbox
+        return vercel_sandbox.run_snapshot(run_id, phase, files, approved_policy)
     if approved_policy != policy(approved_policy['profile']):
         raise ValueError('Runner policy changed after authorization.')
     ready = availability()

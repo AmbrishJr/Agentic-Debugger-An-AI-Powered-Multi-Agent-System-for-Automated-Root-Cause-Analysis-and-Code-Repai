@@ -22,7 +22,8 @@ def digest(text: str) -> str:
 
 def repository_root(source: str) -> Path:
     if source == 'sample':
-        return ROOT / 'examples' / 'buggy-python-app'
+        local = ROOT / 'examples' / 'buggy-python-app'
+        return local if local.is_dir() else Path(__file__).resolve().parents[1] / 'fixtures' / 'sample'
     if source != 'local' or not settings.repository_root:
         raise ValueError('Configure REPOSITORY_ROOT on the backend to use a local repository.')
     root = Path(settings.repository_root).resolve()
@@ -31,7 +32,7 @@ def repository_root(source: str) -> Path:
     return root
 
 
-def safe_path(source: str, relative: str) -> Path:
+def allowed_path(relative: str):
     path = PurePosixPath(relative)
     if path.is_absolute() or '..' in path.parts or '\\' in relative or not path.parts or any(ord(c) < 32 or ord(c) == 127 for c in relative):
         raise ValueError('Only repository-relative file paths are permitted.')
@@ -39,6 +40,13 @@ def safe_path(source: str, relative: str) -> Path:
         raise ValueError('Hidden and ignored files cannot be read.')
     if path.suffix not in ALLOWED or any(re.search(r'(?i)(secret|credential|private.?key|package-lock|pnpm-lock)', part) for part in path.parts):
         raise ValueError('This file is not on the source allowlist.')
+    if path.as_posix() != relative:
+        raise ValueError('Use a canonical repository-relative path.')
+    return path
+
+
+def safe_path(source: str, relative: str) -> Path:
+    path = allowed_path(relative)
     root = repository_root(source).resolve()
     candidate = root.joinpath(*path.parts)
     current = root
@@ -55,6 +63,9 @@ def safe_path(source: str, relative: str) -> Path:
 
 
 def read_source(source: str, path: str) -> str:
+    if source == 'github' or source.startswith('github@'):
+        from app.services.github_source import read_file
+        return read_file(source, path)
     text = safe_path(source, path).read_text(encoding='utf-8')
     if len(text.encode()) > 80000:
         raise ValueError('File exceeds the evidence limit.')
@@ -62,6 +73,9 @@ def read_source(source: str, path: str) -> str:
 
 
 def list_files(source: str) -> list[str]:
+    if source == 'github' or source.startswith('github@'):
+        from app.services.github_source import files
+        return files(source)
     root = repository_root(source)
     result = []
     examined = 0
@@ -78,3 +92,13 @@ def list_files(source: str) -> list[str]:
             except ValueError:
                 continue
     return result
+
+
+def incident_source(incident):
+    if incident.repository == 'github':
+        if incident.repository_name != settings.github_repository:
+            raise ValueError('The configured GitHub repository changed. Restore the incident repository before continuing.')
+        if not re.fullmatch(r'[a-f0-9]{40}', incident.repository_commit):
+            raise ValueError('GitHub incident has no pinned source revision.')
+        return 'github@' + incident.repository_commit
+    return incident.repository

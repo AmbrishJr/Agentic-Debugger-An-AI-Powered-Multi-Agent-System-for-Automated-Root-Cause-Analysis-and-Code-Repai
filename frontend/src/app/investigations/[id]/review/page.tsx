@@ -188,7 +188,7 @@ export default function Review({
           </section>
           <IsolatedValidation
             id={id}
-            repository={data.repository}
+            repository={data.repository === "github" ? `github@${data.repository_commit}` : data.repository}
             pending={pending}
             running={fix.validation_result.status === "running"}
           />
@@ -301,7 +301,7 @@ export default function Review({
                     </a>
                   </Button>
                 ) : settings.data?.github_configured &&
-                  data.repository === "local" ? (
+                  ["local", "github"].includes(data.repository) ? (
                   <>
                     <p>
                       Publish this reviewed change to{" "}
@@ -331,9 +331,8 @@ export default function Review({
                   </>
                 ) : (
                   <p className="muted">
-                    Available for a configured local repository with a matching
-                    GitHub target. Set integration credentials on the backend,
-                    then investigate that repository.
+                    Available for a configured GitHub repository or a local
+                    repository with a matching GitHub target.
                   </p>
                 )}
               </div>

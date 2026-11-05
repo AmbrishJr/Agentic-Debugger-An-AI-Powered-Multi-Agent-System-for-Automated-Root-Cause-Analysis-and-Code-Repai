@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import Field
 from sqlalchemy import select, delete, func
 from sqlalchemy.exc import IntegrityError
-from app.db.session import get_db
+from app.db.session import get_db, serialize_write
 from app.models.records import User, AuthSession, LoginThrottle, now
 from app.schemas.contracts import StrictModel
 from app.services.auth import COOKIE, password_hash, verify_password, create_session, load_session, public_user
@@ -39,6 +39,7 @@ def me(request:Request,db=Depends(get_db)):
         return {'enabled':False,'user':{'id':'local','username':'local developer','role':'admin','active':True},'csrf_token':''}
     user,session=load_session(db,request.cookies.get(COOKIE))
     return {'enabled':True,'user':public_user(user) if user else None,'csrf_token':session.csrf_token if session else '',
+            'deployment':'vercel' if settings.job_execution == 'vercel' else 'local',
             'setup_required':db.scalar(select(func.count()).select_from(User))==0}
 
 
@@ -46,7 +47,7 @@ def me(request:Request,db=Depends(get_db)):
 def login(body:Login,response:Response,db=Depends(get_db)):
     username=body.username.lower()
     # Serialize rate-limit updates. A missing username gets the same password work.
-    db.connection().exec_driver_sql('BEGIN IMMEDIATE')
+    serialize_write(db, 'login:' + username)
     throttle=db.get(LoginThrottle,username)
     if not throttle or throttle.expires_at <= now():
         if throttle: db.delete(throttle);db.flush()
@@ -109,7 +110,7 @@ def create_user(body:CreateUser,db=Depends(get_db)):
 
 @router.put('/users/{user_id}')
 def update_user(user_id:str,body:UpdateUser,db=Depends(get_db)):
-    db.connection().exec_driver_sql('BEGIN IMMEDIATE')
+    serialize_write(db, 'workspace-admins')
     user=db.get(User,user_id)
     if not user: raise HTTPException(404,'User not found.')
     admins=db.scalar(select(func.count()).select_from(User).where(User.role=='admin',User.active==True))

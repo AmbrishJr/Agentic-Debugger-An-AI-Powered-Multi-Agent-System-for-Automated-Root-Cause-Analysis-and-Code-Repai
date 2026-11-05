@@ -104,6 +104,8 @@ def recover():
 
 
 def worker_loop(stop):
+    if engine.dialect.name != 'sqlite':
+        raise ValueError('Use JOB_EXECUTION=vercel with PostgreSQL; local workers require SQLite.')
     lock_path = Path(engine.url.database).with_suffix('.worker.lock')
     with lock_path.open('a') as lock:
         try:

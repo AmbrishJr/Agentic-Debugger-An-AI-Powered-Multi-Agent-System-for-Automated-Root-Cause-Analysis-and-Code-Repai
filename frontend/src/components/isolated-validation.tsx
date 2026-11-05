@@ -5,6 +5,7 @@ import { Box, Play, ShieldCheck } from "lucide-react";
 import { api, post } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge, ErrorBox } from "@/components/common";
+import { useAuth } from "@/components/auth";
 
 type Run = {
   id: string;
@@ -51,6 +52,7 @@ export function IsolatedValidation({
   running: boolean;
 }) {
   const client = useQueryClient();
+  const { user } = useAuth();
   const [selected, setSelected] = useState<string[]>([]);
   const [profile, setProfile] = useState("python-unittest");
   const [consent, setConsent] = useState(false);
@@ -103,6 +105,13 @@ export function IsolatedValidation({
       void client.invalidateQueries({ queryKey: ["incident", id] });
     },
   });
+  const cleanup = useMutation({
+    mutationFn: (runId: string) => post(`/incidents/${id}/validation-runs/${runId}/cleanup`, {}),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["validation-runs", id] });
+      void client.invalidateQueries({ queryKey: ["incident", id] });
+    },
+  });
   return (
     <section className="panel panel-body review-validation">
       <div className="section-heading">
@@ -125,11 +134,11 @@ export function IsolatedValidation({
           files.error ||
           runs.error ||
           prepare.error ||
-          authorize.error
+          authorize.error || cleanup.error
         }
       />
       <p className="fine-print">
-        Run a fixed Python unittest or pytest profile in two fresh containers,
+        Run a fixed Python unittest or pytest profile in two fresh isolated environments,
         before and after the patch. No network, credentials, or host mounts are
         supplied. Only the selected snapshot is included.
       </p>
@@ -261,6 +270,11 @@ export function IsolatedValidation({
             {run.result.error && (
               <p className="error-text">{run.result.error}</p>
             )}
+            {run.status === "cleanup_failed" && user?.role !== "viewer" && (
+              <Button variant="outline" disabled={cleanup.isPending} onClick={() => cleanup.mutate(run.id)}>
+                {cleanup.isPending ? "Cleaning up…" : "Retry sandbox cleanup"}
+              </Button>
+            )}
             {(["before", "after"] as const).map((phase) => {
               const result = run.result[phase];
               return (
@@ -274,7 +288,7 @@ export function IsolatedValidation({
                       {result.timed_out && "Time limit exceeded. "}
                       {result.output_limited && "Output limit exceeded. "}
                       {result.cleanup_succeeded === false &&
-                        "Container cleanup failed; operator action required."}
+                        "Sandbox cleanup failed; retry cleanup before running more tests."}
                     </p>
                     <pre>{result.output || "No process output recorded."}</pre>
                   </div>

@@ -1,5 +1,28 @@
 # Verification record
 
+## Vercel migration — November 5–6, 2026 (Asia/Kolkata)
+
+Cloud adapters are implemented; hosted deployment is still pending. The existing `.env`, administrator account, and local database were not replaced. See [deployment configuration and remaining hosted checks](vercel.md).
+
+| Check | Observed result |
+| --- | --- |
+| PostgreSQL regression suite | 84 tests passed against a fresh disposable PostgreSQL 17 database, Python 3.13.2, and the cloud lockfile |
+| Final cloud/GitHub recovery checks | 24 tests passed after adding interrupted-PR recovery; the suite now contains 85 backend cases |
+| Existing Python 3.10/SQLite environment | 75 passed, 9 cloud/SDK-specific skips before the final PostgreSQL-only PR test; all 5 affected local GitHub tests also passed |
+| Real Workflow SDK | All seven demo agents completed through the SDK's local embedded queue transport; no hosted workflow or AI provider was called |
+| Cloud runner image | Buildx built the required linux/amd64 image; architecture inspection passed. Both unittest and pytest reproduced the original bug (exit 1) and passed the fixed bundled source (exit 0) in network-disabled local containers |
+| Frontend | TypeScript, 4 component tests, and production build passed |
+| Browser workflows | 6 passed, including real local Docker before/after execution |
+| Vercel connection | MCP documentation search and authenticated team-list request succeeded |
+
+Tests cover PostgreSQL migrations/search/account transactions, duplicate cloud deliveries, cancellation and generation fencing, stale failure rejection, preserving completed validation results, authorization non-replay, sandbox output and cleanup failures, repository/commit pinning, unsafe GitHub paths, and read-only transfer of an administrator into an empty database. The real SDK check is reproducible with `backend/.venv-cloud/bin/python scripts/validate_cloud_workflow.py` and isolates its database, queue state, and credentials.
+
+No Vercel project deployment, PostgreSQL provider provisioning, registry upload, or hosted Sandbox execution has occurred in this migration pass. The existing real Gemini/GitHub checks below predate the cloud adapters. They do not establish hosted operation.
+
+The Mac's legacy Docker builder failed during cross-architecture image assembly. Installing Docker Buildx and rebuilding resolved that local tooling issue. The validated AMD64 image is retained locally as `autorca-runner-vercel:amd64-test`; it must still be published to Vercel Container Registry and reach Ready status before hosted use.
+
+## Earlier local release verification
+
 Verified locally with Python 3.10.14, Node.js 24.7.0, and Chromium through Playwright.
 
 | Check | Observed result |

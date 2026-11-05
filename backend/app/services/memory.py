@@ -18,6 +18,14 @@ class FTSRetriever:
         tokens = list(dict.fromkeys(re.findall(r'[a-zA-Z][a-zA-Z0-9_]{2,}', query)))[:16]
         if not tokens:
             return []
+        if self.db.get_bind().dialect.name == 'postgresql':
+            vector = "to_tsvector('simple', error_signature || ' ' || root_cause || ' ' || resolution_summary)"
+            rows = self.db.execute(text(f'''SELECT incident_id, error_signature, root_cause,
+                resolution_summary, ts_rank_cd({vector}, to_tsquery('simple', :query)) AS rank
+                FROM incident_memory WHERE {vector} @@ to_tsquery('simple', :query)
+                AND incident_id != :id ORDER BY rank DESC, incident_id LIMIT :limit'''),
+                {'query': ' | '.join(tokens), 'id': exclude_id, 'limit': limit}).mappings().all()
+            return [dict(r, retrieval='PostgreSQL full-text keyword rank; not semantic similarity') for r in rows]
         expression = ' OR '.join('"' + t + '"' for t in tokens)
         rows = self.db.execute(text('''SELECT incident_id, error_signature, root_cause,
             resolution_summary, bm25(memory_fts) AS rank FROM memory_fts
@@ -74,7 +82,7 @@ class HybridRetriever:
             ranks[identifier] = ranks.get(identifier, 0) + 1/(60+rank+1)
             candidates.setdefault(identifier, item)
         return [{**candidates[identifier], 'rank':ranks[identifier],
-                 'retrieval':'Hybrid BM25 and local TF-IDF concept vectors; curated vocabulary, no neural embeddings'}
+                 'retrieval':('Hybrid BM25' if self.db.get_bind().dialect.name == 'sqlite' else 'Hybrid PostgreSQL full-text rank') + ' and local TF-IDF concept vectors; curated vocabulary, no neural embeddings'}
                 for identifier in sorted(ranks, key=ranks.get, reverse=True)[:limit]]
 
 
@@ -91,5 +99,13 @@ def remember(db, incident, analysis, triage):
         retrieval_metadata={'mode': incident.mode, 'approval': 'pending', 'deployed': False})
     db.add(memory)
     db.flush()
-    db.execute(text('INSERT INTO memory_fts(incident_id, error_signature, root_cause, resolution_summary) VALUES (:id, :signature, :root, :resolution)'),
-               {'id': incident.id, 'signature': memory.error_signature, 'root': memory.root_cause, 'resolution': resolution})
+    if db.get_bind().dialect.name == 'sqlite':
+        db.execute(text('INSERT INTO memory_fts(incident_id, error_signature, root_cause, resolution_summary) VALUES (:id, :signature, :root, :resolution)'),
+                   {'id': incident.id, 'signature': memory.error_signature, 'root': memory.root_cause, 'resolution': resolution})
+
+
+def update_memory_index(db, memory):
+    # PostgreSQL's expression index is maintained transactionally by the database.
+    if db.get_bind().dialect.name == 'sqlite':
+        db.execute(text('UPDATE memory_fts SET resolution_summary=:summary WHERE incident_id=:id'),
+                   {'summary': memory.resolution_summary, 'id': memory.incident_id})

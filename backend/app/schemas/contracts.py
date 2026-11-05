@@ -12,7 +12,7 @@ class IncidentCreate(StrictModel):
     title: str = Field(min_length=3, max_length=180)
     error_log: str = Field(min_length=10, max_length=50000)
     mode: Literal['demo', 'live'] = 'demo'
-    repository: Literal['sample', 'local'] = 'sample'
+    repository: Literal['sample', 'local', 'github'] = 'sample'
     selected_files: list[str] = Field(default_factory=list, max_length=10)
 
 

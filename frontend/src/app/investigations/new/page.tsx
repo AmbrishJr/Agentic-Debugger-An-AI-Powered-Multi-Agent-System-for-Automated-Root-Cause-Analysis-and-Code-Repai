@@ -168,6 +168,9 @@ export default function NewInvestigation() {
                   }}
                 >
                   <option value="sample">Bundled checkout application</option>
+                  <option value="github" disabled={!settings.data?.github_configured}>
+                    Configured GitHub repository{!settings.data?.github_configured ? " · not configured" : ""}
+                  </option>
                   <option
                     value="local"
                     disabled={!settings.data?.local_repository_configured}

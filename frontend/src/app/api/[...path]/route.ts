@@ -1,11 +1,14 @@
 import { NextRequest } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 300;
 async function proxy(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
+  if (process.env.VERCEL === "1" && (!process.env.BACKEND_URL || !process.env.AUTORCA_API_TOKEN))
+    return Response.json({ error: { message: "The workspace backend is not configured." } }, { status: 503 });
   if (
     path.some(
       (p) => p === ".." || p === "." || p.includes("/") || p.includes("\\"),
@@ -37,6 +40,8 @@ async function proxy(
   }
   if (process.env.AUTORCA_API_TOKEN)
     headers["X-AutoRCA-Token"] = process.env.AUTORCA_API_TOKEN;
+  if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET)
+    headers["x-vercel-protection-bypass"] = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   try {
     let body: Uint8Array | undefined;
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -71,6 +76,7 @@ async function proxy(
         headers,
         body: body as BodyInit | undefined,
         cache: "no-store",
+        redirect: "error",
         signal: request.signal,
       },
     );
@@ -91,7 +97,7 @@ async function proxy(
       {
         error: {
           message:
-            "Backend unavailable. Start FastAPI on port 8000 and try again.",
+            "Backend unavailable. Check the workspace service configuration and try again.",
         },
       },
       { status: 502 },

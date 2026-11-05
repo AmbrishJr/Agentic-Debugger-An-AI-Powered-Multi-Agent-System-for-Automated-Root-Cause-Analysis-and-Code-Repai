@@ -1,7 +1,16 @@
 .env
+.env.*
+!.env.example
+!.env.vercel.example
+**/.env.*
+!**/.env.example
+!**/.env.vercel.example
 .env.local
 **/.env.local
 **/.venv/
+**/.venv-cloud/
+**/.vercel/
+**/.workflow-data/
 **/__pycache__/
 **/.pytest_cache/
 **/node_modules/

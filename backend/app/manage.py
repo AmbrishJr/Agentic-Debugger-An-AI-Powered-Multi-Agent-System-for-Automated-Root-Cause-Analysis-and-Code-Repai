@@ -4,7 +4,7 @@ import getpass
 import re
 from sqlalchemy import select, func
 from app.db.migrate import migrate
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, serialize_write
 from app.models.records import User, AuthSession
 from app.services.auth import password_hash
 
@@ -21,7 +21,7 @@ def main():
     hashed=password_hash(password)
     migrate()
     with SessionLocal() as db:
-        db.connection().exec_driver_sql('BEGIN IMMEDIATE')
+        serialize_write(db, 'workspace-admins')
         user=db.scalar(select(User).where(User.username==username))
         if args.command=='create-admin':
             if db.scalar(select(func.count()).select_from(User)):

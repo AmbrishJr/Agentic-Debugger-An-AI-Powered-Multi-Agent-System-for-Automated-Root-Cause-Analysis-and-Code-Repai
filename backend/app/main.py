@@ -19,7 +19,8 @@ from app.services.jobs import start_worker
 
 @asynccontextmanager
 async def lifespan(app):
-    migrate()
+    if settings.migrate_on_startup:
+        migrate()
     with SessionLocal() as db:
         expire_plans(db)
     stop = start_worker() if settings.job_execution == 'embedded' else None
