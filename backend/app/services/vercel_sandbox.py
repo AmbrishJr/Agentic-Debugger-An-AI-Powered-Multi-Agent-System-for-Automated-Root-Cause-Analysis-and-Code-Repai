@@ -58,6 +58,9 @@ class BoundedOutput(io.TextIOBase):
         self.data = bytearray()
         self.limited = False
 
+    def writable(self):
+        return True
+
     def write(self, value):
         raw = value.encode('utf-8', errors='replace')
         room = OUTPUT_LIMIT - len(self.data)

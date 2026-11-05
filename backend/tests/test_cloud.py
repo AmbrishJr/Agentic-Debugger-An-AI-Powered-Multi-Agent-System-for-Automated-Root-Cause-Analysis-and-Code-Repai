@@ -219,6 +219,7 @@ def test_vercel_runner_policy_output_and_cleanup(monkeypatch, exit_code, noisy, 
             assert command == 'python' and args[:3] == ['-I','-B','/opt/autorca/cloud_bootstrap.py']
             assert kwargs['env'] == {} and not kwargs['sudo']
             assert callable(kwargs['on_start'])  # SDK must not replay a process after it starts.
+            assert kwargs['stdout'].writable() and kwargs['stderr'].writable()
             kwargs['stdout'].write('x' * (70000 if noisy else 12))
             return SimpleNamespace(returncode=exit_code)
     def create_box(**kwargs):
