@@ -40,8 +40,8 @@ async function proxy(
   }
   if (process.env.AUTORCA_API_TOKEN)
     headers["X-AutoRCA-Token"] = process.env.AUTORCA_API_TOKEN;
-  if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET)
-    headers["x-vercel-protection-bypass"] = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (process.env.AUTORCA_BACKEND_BYPASS_SECRET)
+    headers["x-vercel-protection-bypass"] = process.env.AUTORCA_BACKEND_BYPASS_SECRET;
   try {
     let body: Uint8Array | undefined;
     if (request.method !== "GET" && request.method !== "HEAD") {
