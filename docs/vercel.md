@@ -1,6 +1,6 @@
 # Vercel deployment
 
-The repository supports a Vercel frontend, a Vercel FastAPI backend, durable Python workflows, and Vercel Sandbox test execution. PostgreSQL is supplied by a database provider such as Neon through Vercel Marketplace. This document describes deployment preparation; it is not evidence of a successful hosted deployment.
+The repository supports a Vercel frontend, a Vercel FastAPI backend, durable Python workflows, and Vercel Sandbox test execution. PostgreSQL is supplied by Neon through Vercel Marketplace. Production is available at [autorca-frontend.vercel.app](https://autorca-frontend.vercel.app); sign in with the existing workspace account. See the [hosted verification record](verification.md) for tested behavior and limitations. The instructions below also describe how to reproduce the setup.
 
 ## Project layout
 
@@ -26,7 +26,7 @@ Use these templates as the exact variable checklist:
 
 Set Preview and Production separately, with separate databases and matching frontend/backend pairs. `PUBLIC_ORIGIN` is the exact frontend HTTPS origin, without a trailing slash. Set Gemini's existing key as `GEMINI_API_KEY`; no OpenAI key is required. GitHub credentials are needed for GitHub source and draft PRs, but not the bundled demo. No secret should use the `NEXT_PUBLIC_` prefix.
 
-Local `.env`, credentials, virtual environments, workflow state, and databases are excluded from deployment uploads. The existing local/Docker requirements remain separate; the Vercel backend uses the cloud `pyproject.toml` and `uv.lock`.
+Local `.env`, credentials, virtual environments, workflow state, and databases are excluded from deployment uploads. Root and project-specific `.vercelignore` files cover CLI and Git deployments. Inspect `vercel deploy --dry --format=json` before uploading from a different directory. The production release was uploaded from a clean snapshot of committed files. The existing local/Docker requirements remain separate; the Vercel backend uses the cloud `pyproject.toml` and `uv.lock`.
 
 ## Database and existing administrator
 

@@ -18,7 +18,7 @@ AutoRCA-X is a local, full-stack engineering workspace with a seven-agent LangGr
 - Optional, separately authorized GitHub draft PR creation using a backend-only fine-grained access token.
 - Explicitly authorized isolated Python unittest and pytest runs against immutable before/after snapshots, with persisted manifests and bounded Docker execution.
 
-This is a working **authenticated shared workspace** with administrator, editor, and viewer roles. It includes durable investigation jobs, cancellation/retry, and evidence-backed resolution tracking. Vercel deployment adapters are available for PostgreSQL, Python Workflows, GitHub source, and isolated Sandbox tests; see [Vercel deployment](docs/vercel.md). Hosted provisioning and preview verification are still required. Tenant isolation and SSO are outside this release.
+This is a working **authenticated shared workspace** with administrator, editor, and viewer roles. It includes durable investigation jobs, cancellation/retry, and evidence-backed resolution tracking. The application is deployed on Vercel with PostgreSQL, Python Workflows, GitHub source, and isolated Sandbox tests; see [Vercel deployment](docs/vercel.md) and the [hosted verification record](docs/verification.md). Tenant isolation and SSO are outside this release.
 
 ## Quick start on macOS
 

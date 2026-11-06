@@ -1,0 +1,94 @@
+{
+  "date": "2026-11-06",
+  "timezone": "Asia/Kolkata",
+  "deployed_source_commit": "d0c9aec6dd9738a9601ed8ae970a9a9a2254a548",
+  "frontend": {
+    "url": "https://autorca-frontend.vercel.app",
+    "deployment_id": "dpl_Cs9ivPiKx85bDzHwuKfknwemnkET",
+    "status": "READY"
+  },
+  "backend": {
+    "url": "https://autorca-backend.vercel.app",
+    "deployment_id": "dpl_472aZynFruorB9uab5utEcwGQWBp",
+    "status": "READY"
+  },
+  "database": {
+    "provider": "Neon",
+    "plan": "Free",
+    "separate_preview_and_production": true,
+    "existing_account_preserved": true,
+    "original_sqlite_unchanged": true
+  },
+  "runner": {
+    "architecture": "amd64",
+    "digest": "sha256:3dc137ead169a1b5f769d0638caf9bce59c4d9e3cebbe372e86844347fbd2609",
+    "registry_visibility": "private",
+    "status": "Ready"
+  },
+  "preview": {
+    "hosted": true,
+    "checks": [
+      "Frontend page",
+      "Database health through frontend",
+      "Existing workspace initialized",
+      "Unauthenticated data blocked",
+      "Direct backend requires shared token",
+      "Secure sign-in cookie",
+      "CSRF protection",
+      "Cloud workflow configured",
+      "Hosted GitHub source access",
+      "demo seven-agent hosted workflow",
+      "Authorized hosted Sandbox workflow",
+      "Sandbox result and cleanup",
+      "Authorization cannot replay",
+      "live seven-agent hosted workflow",
+      "Logout"
+    ],
+    "demo_incident_id": "70034883-879a-465d-bfd2-d3240caf2399",
+    "validation_run_id": "61ba1827-51ee-45a2-b169-99400f68af81",
+    "validation_status": "completed",
+    "live_incident_id": "d9559169-b810-4039-922a-91eb64e3781e",
+    "status": "passed",
+    "temporary_account_removed": true
+  },
+  "browser": {
+    "status": "passed",
+    "browser": "Chromium",
+    "hosted": true
+  },
+  "production": {
+    "status": "passed",
+    "checks": {
+      "/": {
+        "status": 200,
+        "passed": true
+      },
+      "/api/health": {
+        "status": 200,
+        "passed": true,
+        "live_available": true
+      },
+      "/api/auth/me": {
+        "status": 200,
+        "passed": true,
+        "initialized": true
+      },
+      "/api/incidents": {
+        "status": 401,
+        "passed": true
+      },
+      "direct_backend": {
+        "status": 401,
+        "passed": true
+      }
+    },
+    "frontend_url": "https://autorca-frontend.vercel.app",
+    "backend_url": "https://autorca-backend.vercel.app"
+  },
+  "limitations": [
+    "Gemini required two manual retries after provider errors.",
+    "Hosted draft-PR publication, cancellation, and viewer-role checks were not repeated in this deployment pass."
+  ],
+  "published_pull_requests": 0,
+  "temporary_accounts_removed": true
+}

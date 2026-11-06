@@ -1,5 +1,28 @@
 # Verification record
 
+## Hosted Vercel release — November 6, 2026 (Asia/Kolkata)
+
+Production frontend: [autorca-frontend.vercel.app](https://autorca-frontend.vercel.app). Backend: [autorca-backend.vercel.app](https://autorca-backend.vercel.app); direct requests require the server API token. Both final production builds reached Ready. [Deployment report](vercel-deployment.json).
+
+Separate Neon databases on the free plan were provisioned for Preview and Production. The existing workspace was copied into each empty target; account password hashes and roles match the original SQLite database. The original database and `.env` remain intact. Temporary verification accounts and their sessions were removed from Preview; no temporary account was created in Production.
+
+| Hosted check | Observed result |
+| --- | --- |
+| Preview authentication and proxy | Sign-in, Secure/HttpOnly/SameSite cookies, CSRF rejection, logout, existing-account initialization, unauthenticated incident rejection, and backend API-token enforcement passed |
+| Demo investigation | All seven agents completed through hosted Vercel Workflows |
+| Authorized Sandbox workflow | Original bundled source failed, fixed source passed, cleanup confirmed; reusing authorization returned HTTP 400 and created no new job |
+| Runner image | Private AMD64 VCR image reached Ready; real SDK before/after checks and cleanup passed |
+| Gemini investigation | Completed through hosted Workflows after two manual retries resumed saved checkpoints; the initial analysis and subsequent report calls encountered provider errors |
+| GitHub | Deployed backend read source from the disposable validation repository using real credentials |
+| Browser | Hosted Chromium sign-in, dashboard, review, 390-pixel mobile layout, and logout passed |
+| Production | Public frontend, API health, live-provider availability, initialized workspace, and unauthenticated access protections passed |
+
+Hosted checks exposed and fixed two integration issues: the Sandbox output stream must implement `writable()`, and the frontend must use `AUTORCA_BACKEND_BYPASS_SECRET` because Vercel supplies its own project-specific `VERCEL_AUTOMATION_BYPASS_SECRET`. Targeted cloud tests and TypeScript checks passed after the respective fixes.
+
+Preview uses the disposable GitHub repository; Production targets the AutoRCA application repository selected by the owner. No draft PR was created, merged, or published during this deployment pass. Earlier local draft-PR tests remain recorded below; hosted draft-PR publication and hosted cancellation/viewer-role checks were not repeated. Provider availability can still vary; successful saved steps are retained for manual investigation retries.
+
+The following sections record earlier verification stages and their status at that time.
+
 ## Vercel migration — November 5–6, 2026 (Asia/Kolkata)
 
 Cloud adapters are implemented; hosted deployment is still pending. The existing `.env`, administrator account, and local database were not replaced. See [deployment configuration and remaining hosted checks](vercel.md).
