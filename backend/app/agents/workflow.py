@@ -9,10 +9,12 @@ from app.models.records import Incident, Investigation, AgentExecution, Proposed
 from app.schemas.contracts import Triage, Evidence, Analysis, FixSuggestion, ReportNarrative
 from app.services import llm
 from app.services.memory import FTSRetriever, HybridRetriever, remember
-from app.services.security import read_source, list_files, digest, redact, incident_source
+from app.services.security import read_source, list_files, digest, redact, redact_source, incident_source
 from app.services.sample import BUGGY, FIXED, SAMPLE_LOG
 from app.services.validation import validate
 from app.services.patches import unified_patch
+from app.services.grounding import ground_analysis, reference, permits_patch, CitationError
+from app.services.repository_snapshots import StaleSnapshotError
 from app.services.jobs import checkpoint, JobCancelled
 
 AGENTS = ['triage', 'evidence', 'memory', 'analysis', 'fix', 'validation', 'report']
@@ -27,6 +29,7 @@ class WorkflowState(TypedDict, total=False):
     error_log: str
     selected_files: list[str]
     config: dict
+    repository_snapshot: dict
     triage: dict
     evidence: list[dict]
     memory: list[dict]
@@ -55,7 +58,7 @@ def triage(state):
 def evidence(state):
     log = state['error_log']
     items = [Evidence(id='E1', kind='log', path='submitted.log', line_start=1,
-                      line_end=len(log.splitlines()), content=log, sha256=digest(log)).model_dump()]
+                      line_end=len(log.splitlines()), content=log, sha256=digest(log), content_sha256=digest(log), snapshot_id=digest(log)).model_dump()]
     files = list_files(state['repository'])
     candidates = list(state['selected_files'])
     for frame in state.get('triage', {}).get('frames', []):
@@ -64,13 +67,15 @@ def evidence(state):
             matches = [f for f in files if f.rsplit('/', 1)[-1] == frame['path'].rsplit('/', 1)[-1]]
         if len(matches) == 1:
             candidates.append(matches[0])
-    if state['repository'] == 'sample':
+    if state['repository'].split('@')[0] == 'sample':
         candidates.append('README.md')
     for path in list(dict.fromkeys(candidates))[:state['config']['max_evidence_files']]:
         raw = read_source(state['repository'], path)
-        content = redact(raw)
+        content = redact_source(raw)
         items.append(Evidence(id=f'E{len(items)+1}', kind='source', path=path, line_start=1,
-                              line_end=len(raw.splitlines()), content=content, sha256=digest(raw)).model_dump())
+                              line_end=len(raw.splitlines()), content=content, sha256=digest(raw), content_sha256=digest(content),
+                              snapshot_id=state.get('repository_snapshot', {}).get('snapshot_id', ''),
+                              commit_sha=state.get('repository_snapshot', {}).get('commit_sha')).model_dump())
     return items
 
 
@@ -81,37 +86,54 @@ def memory(state):
 
 
 def is_sample(state):
-    return (state['repository'] == 'sample' and state['error_log'] == SAMPLE_LOG and
+    return (state['repository'].split('@')[0] == 'sample' and state['error_log'] == SAMPLE_LOG and
             any(e['path'] == 'checkout.py' and e['sha256'] == digest(BUGGY) for e in state.get('evidence', [])))
 
 
+def check_evidence_current(state):
+    for item in state.get('evidence', []):
+        if item['kind'] == 'source' and digest(read_source(state['repository'], item['path'])) != item['sha256']:
+            raise StaleSnapshotError('Collected source changed during investigation. Submit a new incident.')
+
+
 def analysis(state):
+    check_evidence_current(state)
     if state['mode'] == 'live':
-        result = llm.generate(Analysis, 'Rank root cause hypotheses; cite provided evidence IDs and state uncertainty.',
+        result = llm.generate(Analysis, 'Rank up to three root cause hypotheses. Supply observations with citations and supporting_evidence/contradicting_evidence with exact complete quoted lines, evidence_id, kind, path, line_start/end, sha256, snapshot_id and commit_sha copied from evidence. Log commit_sha is null. Preserve indentation; cite at most 50 lines per reference. List unresolved diagnostic missing_checks (not future repair tests). Use disposition insufficient_evidence when the cause is unsupported or contradictions remain; otherwise supported. Do not treat citation validity as proof of causality.',
                               {k: state.get(k) for k in ('triage', 'evidence', 'memory')}, state['config']['model'], state['config'].get('provider', 'openai'))
     elif is_sample(state):
-        ids = [e['id'] for e in state['evidence']]
+        items = state['evidence']
+        log_ref = reference(items[0], 2, 5)
+        source = next(e for e in items if e['kind'] == 'source' and e['path'] == 'checkout.py')
+        code_ref, contract_ref = reference(source, 3, 3), reference(source, 2, 2)
+        supports = [log_ref, code_ref, contract_ref]
+        ids = list(dict.fromkeys(c['evidence_id'] for c in supports))
         result = Analysis(observed_facts=['The submitted log reports ZeroDivisionError with discount=0.',
                                           'checkout.py divides price by discount.',
                                           'The bundled contract specifies a percentage discount, including zero.'],
             hypotheses=[{'title': 'Percentage discount is implemented as division',
                 'explanation': 'A zero discount becomes a zero divisor at checkout.py:3. The same formula also produces incorrect prices for nonzero percentages. Calculate the retained percentage of the price and reject values outside the documented range.',
-                'confidence': 'high', 'evidence_ids': ids,
+                'confidence': 'high', 'evidence_ids': ids, 'supporting_evidence': supports,
+                'contradicting_evidence': [], 'missing_checks': [],
                 'uncertainty': 'Deterministic bundled example. Production behavior and downstream callers have not been assessed.'}],
+            disposition='supported', observations=[
+                {'statement': 'The submitted stack trace reports division by zero.', 'citations': [log_ref]},
+                {'statement': 'The implementation divides price by discount.', 'citations': [code_ref]},
+                {'statement': 'The docstring specifies a percentage discount including zero.', 'citations': [contract_ref]}],
             summary='The checkout calculation divides by the discount instead of applying a percentage reduction. A zero-percent discount therefore crashes checkout.').model_dump()
     else:
         result = Analysis(observed_facts=['The submitted log and available source were collected.'],
             hypotheses=[{'title': 'More evidence is required', 'explanation': 'Demo mode only diagnoses the exact bundled checkout scenario. Configure Live AI Mode for other incidents.',
                          'confidence': 'low', 'evidence_ids': ['E1'], 'uncertainty': 'No root cause established.'}],
             summary='No supported deterministic diagnosis for this input.').model_dump()
-    known = {e['id'] for e in state.get('evidence', [])}
-    for hypothesis in result['hypotheses']:
-        if not set(hypothesis['evidence_ids']).issubset(known):
-            raise ValueError('Model cited evidence IDs that were not collected.')
-    return result
+    check_evidence_current(state)
+    return ground_analysis(result, state.get('evidence', []))
 
 
 def fix(state):
+    check_evidence_current(state)
+    if not permits_patch(state.get('analysis', {})):
+        return {'available': False, 'reason': 'A code patch requires a supported hypothesis with validated source and log citations and no unresolved diagnostic checks or contradictions.'}
     with SessionLocal() as db:
         saved = db.scalar(select(ProposedFix).where(ProposedFix.incident_id == state['incident_id']))
         if saved and saved.validation_result.get('status') != 'regenerate':
@@ -194,6 +216,7 @@ def report(state):
     return {**narrative, 'incident_id': state['incident_id'], 'mode': state['mode'],
             'provider': state['config'].get('provider', 'openai') if state['mode'] == 'live' else None,
             'model': state['config']['model'] if state['mode'] == 'live' else None,
+            'repository_snapshot': state.get('repository_snapshot', {}),
             'triage': state.get('triage', {}), 'analysis': state.get('analysis', {}),
             'evidence': state.get('evidence', []), 'history': state.get('memory', []),
             'affected_files': [e['path'] for e in state.get('evidence', []) if e['kind'] == 'source'],
@@ -221,7 +244,7 @@ def tracked(name, function):
             updates = {name: output}
         except Exception as exc:
             # Never store provider errors, prompts, credentials, or raw exception messages.
-            error = str(exc) if isinstance(exc, llm.ProviderError) else f'{name.title()} could not complete ({type(exc).__name__}). Check configuration and source availability; partial results are preserved.'
+            error = str(exc) if isinstance(exc, (llm.ProviderError, CitationError, StaleSnapshotError)) else f'{name.title()} could not complete ({type(exc).__name__}). Check configuration and source availability; partial results are preserved.'
             output = {'error': error}
             updates = {'errors': state.get('errors', []) + [{'agent': name, 'message': error}]}
         with SessionLocal() as db:
@@ -260,7 +283,7 @@ def load_state(incident_id: str, job_id: str = ''):
         inv = db.scalar(select(Investigation).where(Investigation.incident_id == incident_id))
         state = WorkflowState(incident_id=incident_id, investigation_id=inv.id, job_id=job_id, mode=incident.mode,
             repository=incident_source(incident), error_log=incident.error_log, selected_files=incident.selected_files,
-            config=inv.config, errors=[])
+            config=inv.config, repository_snapshot=incident.repository_snapshot, errors=[])
         state.update({k: v for k, v in inv.analysis_results.items() if k in AGENTS or k == 'errors'})
     return state
 

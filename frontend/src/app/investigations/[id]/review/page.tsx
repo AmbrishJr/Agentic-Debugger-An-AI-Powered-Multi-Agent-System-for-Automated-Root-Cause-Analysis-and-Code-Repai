@@ -18,6 +18,7 @@ import { Settings } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Badge, ErrorBox, Loading, ValidationPanel } from "@/components/common";
 import { date } from "@/lib/utils";
+import { RepairOutcomePanel, SourceProvenance } from "@/components/common";
 import { IsolatedValidation } from "@/components/isolated-validation";
 import { Lifecycle } from "@/components/lifecycle";
 import { useAuth } from "@/components/auth";
@@ -183,12 +184,14 @@ export default function Review({
               </div>
             )}
           </section>
+          <SourceProvenance snapshot={data.repository_snapshot} />
+          <RepairOutcomePanel outcome={data.repair_outcome} />
           <section className="panel panel-body review-validation">
             <ValidationPanel validation={fix.validation_result} />
           </section>
           <IsolatedValidation
             id={id}
-            repository={data.repository === "github" ? `github@${data.repository_commit}` : data.repository}
+            repository={data.repository === "github" ? `github@${data.repository_commit}` : data.repository_snapshot?.version === 1 ? `${data.repository}@${data.id}` : data.repository}
             pending={pending}
             running={fix.validation_result.status === "running"}
           />

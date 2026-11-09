@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "percentage",
+      "split": "development",
+      "title": "Percentage discount calculation",
+      "error_log": "2026-01-15T10:42:31Z ERROR checkout.payment Payment calculation failed\nTraceback (most recent call last):\n  File \"checkout.py\", line 3, in calculate_discount\n    return price / discount\nZeroDivisionError: division by zero\nrequest_context: price=100, discount=0\n",
+      "sources": {
+        "checkout.py": "def calculate_discount(price, discount):\n    \"\"\"Return the final price after a percentage discount (0 through 100).\"\"\"\n    return price / discount\n"
+      },
+      "selected_files": [
+        "checkout.py"
+      ],
+      "repository": "sample",
+      "language": "python",
+      "privacy": "synthetic",
+      "difficulty": "easy"
+    },
+    {
+      "id": "null-input",
+      "split": "development",
+      "title": "Missing tags cause a runtime error",
+      "error_log": "File \"tags.py\", line 3, in normalize\nTypeError: NoneType object is not iterable",
+      "sources": {
+        "tags.py": "def normalize(tags):\n    \"\"\"Missing tags are an empty list.\"\"\"\n    return [x.lower() for x in tags]\n"
+      },
+      "selected_files": [
+        "tags.py"
+      ],
+      "repository": "local",
+      "language": "python",
+      "privacy": "synthetic",
+      "difficulty": "easy"
+    },
+    {
+      "id": "boundary",
+      "split": "development",
+      "title": "Adult boundary excludes age eighteen",
+      "error_log": "File \"age.py\", line 3, in adult\nAssertionError: age 18 was classified as a minor",
+      "sources": {
+        "age.py": "def adult(age):\n    \"\"\"Adults are age 18 and above.\"\"\"\n    return age > 18\n"
+      },
+      "selected_files": [
+        "age.py"
+      ],
+      "repository": "local",
+      "language": "python",
+      "privacy": "synthetic",
+      "difficulty": "easy"
+    },
+    {
+      "id": "cross-file",
+      "split": "development",
+      "title": "Invoice arguments are swapped",
+      "error_log": "File \"pricing.py\", line 3, in total\nAssertionError: invoice(10, 3) should be 36, got 50",
+      "sources": {
+        "invoice.py": "from pricing import total\ndef invoice(price, count):\n    return total(count, price)\n",
+        "pricing.py": "def total(price, count):\n    \"\"\"Add a handling fee of 2 for each unit.\"\"\"\n    return (price + 2) * count\n"
+      },
+      "selected_files": [
+        "pricing.py",
+        "invoice.py"
+      ],
+      "repository": "local",
+      "language": "python",
+      "privacy": "synthetic",
+      "difficulty": "medium"
+    },
+    {
+      "id": "configuration",
+      "split": "development",
+      "title": "Disabled flag unexpectedly enables a feature",
+      "error_log": "File \"config.py\", line 3, in enabled\nAssertionError: configured false but feature is enabled",
+      "sources": {
+        "config.py": "def enabled(value):\n    \"\"\"The string false disables this feature.\"\"\"\n    return bool(value)\n"
+      },
+      "selected_files": [
+        "config.py"
+      ],
+      "repository": "local",
+      "language": "python",
+      "privacy": "synthetic",
+      "difficulty": "easy"
+    },
+    {
+      "id": "external-service",
+      "split": "development",
+      "title": "Upstream response violates success-only contract",
+      "error_log": "File \"gateway.py\", line 4, in fetch\nKeyError: data\nupstream_status=503",
+      "sources": {
+        "gateway.py": "def fetch(client):\n    \"\"\"Return parsed data on success; otherwise raise RuntimeError.\"\"\"\n    response = client.get()\n    return response[\"data\"]\n"
+      },
+      "selected_files": [
+        "gateway.py"
+      ],
+      "repository": "local",
+      "language": "python",
+      "privacy": "synthetic",
+      "difficulty": "easy"
+    },
+    {
+      "id": "missing-logs",
+      "split": "held-out",
+      "title": "Incident with no diagnostic logs",
+      "error_log": "",
+      "sources": {
+        "app.py": "def run():\n    return 42\n"
+      },
+      "selected_files": [
+        "app.py"
+      ],
+      "repository": "local",
+      "language": "python",
+      "privacy": "synthetic",
+      "difficulty": "easy"
+    },
+    {
+      "id": "missing-source",
+      "split": "held-out",
+      "title": "Incident without the referenced source",
+      "error_log": "File \"unknown.py\", line 8, in process\nRuntimeError: operation failed",
+      "sources": {},
+      "selected_files": [],
+      "repository": "local",
+      "language": "python",
+      "privacy": "synthetic",
+      "difficulty": "easy"
+    }
+  ]
+}

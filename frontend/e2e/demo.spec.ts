@@ -14,17 +14,23 @@ test("complete demo, inspect evidence and tests, approve, and find it in history
     .click();
   await expect(page).toHaveURL(/\/investigations\/[a-f0-9-]+/);
   await expect(page.getByText("7 of 7 completed")).toBeVisible();
+  await page.getByText("Source provenance", { exact: true }).click();
+  await expect(page.getByText(/Snapshot:/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Supporting evidence" })).toBeVisible();
+  await expect(page.getByText("Exact quotations and provenance are validated; causal interpretations remain hypotheses.", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", {
       name: "1. Percentage discount is implemented as division",
     }),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Patch unverified" })).toBeVisible();
   await page.getByRole("link", { name: /Review fix/ }).click();
+  await expect(page.getByRole("heading", { name: "Patch unverified" })).toBeVisible();
   await expect(page.getByLabel("Proposed unified diff")).toContainText(
     "return price * (1 - discount / 100)",
   );
   await expect(page.getByText("Four regression tests after fix")).toBeVisible();
-  await page.getByText("View before / after test output").click();
+  await page.getByText("View demo before / after test output").click();
   await expect(
     page.getByText("Ran 4 tests", { exact: false }).last(),
   ).toBeVisible();
@@ -35,6 +41,14 @@ test("complete demo, inspect evidence and tests, approve, and find it in history
   await expect(page.getByText("Decision recorded")).toBeVisible();
   await page.reload();
   await expect(page.getByText("Decision recorded")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Patch unverified" })).toBeVisible();
+  const incidentId = page.url().split("/").at(-2);
+  const report = await page.request.get(`/api/incidents/${incidentId}/report`);
+  const exported = await report.json();
+  expect(exported.repair_outcome.status).toBe("PATCH_UNVERIFIED");
+  expect(exported.repository_snapshot.snapshot_id).toMatch(/^[a-f0-9]{64}$/);
+  expect(exported.analysis.citation_validation.status).toBe("validated");
+  expect(exported.analysis.hypotheses[0].supporting_evidence.length).toBeGreaterThan(0);
   await page
     .getByRole("link", { name: "Incident history", exact: true })
     .click();

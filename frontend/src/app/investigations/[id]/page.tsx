@@ -20,7 +20,7 @@ import {
 import { useIncident } from "@/hooks/use-incident";
 import { post } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Badge, ErrorBox, Loading, ValidationPanel } from "@/components/common";
+import { Badge, ErrorBox, Loading, ValidationPanel, RepairOutcomePanel, EvidenceCitations, SourceProvenance } from "@/components/common";
 import { date, label } from "@/lib/utils";
 import { Lifecycle } from "@/components/lifecycle";
 import { useAuth } from "@/components/auth";
@@ -115,6 +115,7 @@ export default function Investigation({
         </div>
       </div>
       <ErrorBox error={error || start.error} />
+      <SourceProvenance snapshot={data.repository_snapshot} />
       {data.mode === "demo" && (
         <div className="inline-notice">
           <FlaskConical size={16} />
@@ -216,7 +217,8 @@ export default function Investigation({
                 <>
                   <p className="root-summary">{results.analysis.summary}</p>
                   <div className="facts">
-                    <h3>Observed facts</h3>
+                    <h3>Reported observations</h3>
+                    <p className="fine-print">{results.analysis.citation_validation?.limitation ?? "Legacy analysis: precise citations have not been validated."}</p>
                     {results.analysis.observed_facts.map((fact, i) => (
                       <p key={i}>
                         <Check size={15} />
@@ -224,6 +226,10 @@ export default function Investigation({
                       </p>
                     ))}
                   </div>
+                  {results.analysis.observations?.map((observation, i) => (
+                    <EvidenceCitations key={i} title={observation.statement} citations={observation.citations} />
+                  ))}
+                  {results.analysis.disposition === "insufficient_evidence" && <p className="inline-notice">Evidence is insufficient for a supported code repair.</p>}
                   {results.analysis.hypotheses.map((h, i) => (
                     <div className="hypothesis" key={i}>
                       <div className="section-heading">
@@ -231,7 +237,7 @@ export default function Investigation({
                           {i + 1}. {h.title}
                         </h3>
                         <span className="confidence">
-                          {h.confidence} confidence
+                          {h.confidence} evidence support
                         </span>
                       </div>
                       <p>{h.explanation}</p>
@@ -242,6 +248,9 @@ export default function Investigation({
                           </a>
                         ))}
                       </div>
+                      <EvidenceCitations title="Supporting evidence" citations={h.supporting_evidence} />
+                      <EvidenceCitations title="Contradicting evidence" citations={h.contradicting_evidence} />
+                      {!!h.missing_checks?.length && <div><h4>Missing diagnostic checks</h4><ul>{h.missing_checks.map((check, index) => <li key={index}>{check}</li>)}</ul></div>}
                       <p className="fine-print">Uncertainty: {h.uncertainty}</p>
                     </div>
                   ))}
@@ -304,9 +313,10 @@ export default function Investigation({
               </div>
             </section>
           )}
+          <RepairOutcomePanel outcome={data.repair_outcome} />
           {results?.validation && (
             <section className="panel panel-body">
-              <ValidationPanel validation={results.validation} />
+              <ValidationPanel validation={data.fix?.validation_result ?? results.validation} />
             </section>
           )}
           {results?.fix && !results.fix.available && (

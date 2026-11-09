@@ -39,6 +39,26 @@ class Evidence(StrictModel):
     line_end: int
     content: str
     sha256: str
+    content_sha256: str = ''
+    snapshot_id: str = ''
+    commit_sha: str | None = None
+
+
+class Citation(StrictModel):
+    evidence_id: str
+    kind: Literal['source', 'log']
+    path: str
+    line_start: int = Field(ge=1)
+    line_end: int = Field(ge=1)
+    quote: str = Field(min_length=1, max_length=8000)
+    sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+    snapshot_id: str = Field(pattern=r'^[a-f0-9]{64}$')
+    commit_sha: str | None
+
+
+class Observation(StrictModel):
+    statement: str = Field(min_length=1, max_length=2000)
+    citations: list[Citation] = Field(min_length=1, max_length=5)
 
 
 class Hypothesis(StrictModel):
@@ -47,12 +67,17 @@ class Hypothesis(StrictModel):
     confidence: Literal['high', 'medium', 'low']
     evidence_ids: list[str]
     uncertainty: str
+    supporting_evidence: list[Citation] = Field(default_factory=list, max_length=10)
+    contradicting_evidence: list[Citation] = Field(default_factory=list, max_length=10)
+    missing_checks: list[str] = Field(default_factory=list, max_length=10)
 
 
 class Analysis(StrictModel):
     observed_facts: list[str]
-    hypotheses: list[Hypothesis]
+    hypotheses: list[Hypothesis] = Field(max_length=3)
     summary: str
+    observations: list[Observation] = Field(default_factory=list, max_length=20)
+    disposition: Literal['supported', 'insufficient_evidence'] = 'insufficient_evidence'
 
 
 class FileChange(StrictModel):
@@ -112,3 +137,9 @@ class ValidationPlanRequest(StrictModel):
 class ValidationAuthorization(StrictModel):
     authorized: Literal[True]
     plan_hash: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class RepairOutcome(StrictModel):
+    status: Literal['VERIFIED', 'PATCH_UNVERIFIED', 'NOT_REPRODUCED', 'VALIDATION_FAILED', 'INSUFFICIENT_EVIDENCE']
+    reasons: list[str]
+    validation_run_id: str | None = None

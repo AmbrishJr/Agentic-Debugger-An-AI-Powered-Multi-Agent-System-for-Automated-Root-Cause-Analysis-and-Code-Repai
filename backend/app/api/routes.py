@@ -20,6 +20,8 @@ from app.services.memory import update_memory_index
 from app.schemas.contracts import Resolution, Reopen
 from app.services.patches import fix_files
 from app.services import llm
+from app.services.repair_outcomes import resolve_outcome
+from app.services.repository_snapshots import capture, StaleSnapshotError
 
 router = APIRouter(prefix='/api')
 
@@ -50,7 +52,10 @@ def details(db, incident_id):
     fix = db.scalar(select(ProposedFix).where(ProposedFix.incident_id == incident_id))
     jobs = db.scalars(select(Job).where(Job.incident_id == incident_id).order_by(Job.created_at)).all()
     audit = db.scalars(select(IncidentEvent).where(IncidentEvent.incident_id == incident_id).order_by(IncidentEvent.created_at)).all()
-    return {**serialized(incident), 'investigation': serialized(inv), 'executions': [serialized(e) for e in executions], 'fix': serialized(fix),
+    run_id = fix.validation_result.get('isolated_run_id') if fix else None
+    outcome = resolve_outcome(incident, inv, fix, db.get(ValidationRun, run_id) if run_id else None)
+    fix_data = {**serialized(fix), 'repair_outcome': outcome} if fix else None
+    return {**serialized(incident), 'repair_outcome': outcome, 'investigation': serialized(inv), 'executions': [serialized(e) for e in executions], 'fix': fix_data,
             'jobs': [serialized(j) for j in jobs], 'audit': [serialized(e) for e in audit]}
 
 
@@ -100,8 +105,11 @@ def create_incident(body: IncidentCreate, db: Session = Depends(get_db)):
     record = Incident(**{**body.model_dump(), 'title': redact(body.title.strip()), 'error_log': redact(body.error_log)})
     if len(record.title) < 3:
         raise HTTPException(422, 'Title must contain at least three non-whitespace characters.')
-    record.repository_commit = commit
-    record.repository_name = settings.github_repository if commit else ''
+    record.repository_snapshot = capture(body.repository, commit or None)
+    if body.repository in ('local', 'sample') and not set(body.selected_files).issubset(record.repository_snapshot['files']):
+        raise HTTPException(422, 'A selected file is outside the bounded source snapshot. Configure a smaller repository root.')
+    record.repository_commit = record.repository_snapshot.get('commit_sha') or ''
+    record.repository_name = settings.github_repository if body.repository == 'github' else ''
     db.add(record)
     db.commit()
     return serialized(record)
@@ -186,14 +194,22 @@ def get_report(incident_id: str, db: Session = Depends(get_db)):
     report = results.get('report')
     if not report:
         raise HTTPException(409, 'Report is not available yet. Inspect individual agent outputs for partial results.')
-    return {**report, 'validation': data['fix']['validation_result'] if data['fix'] else report.get('validation', {}),
+    return {**report, 'repair_outcome': data['repair_outcome'], 'repository_snapshot': data.get('repository_snapshot', {}), 'validation': data['fix']['validation_result'] if data['fix'] else report.get('validation', {}),
             'title': data['title'], 'severity': data['severity'], 'status': data['status'],
             'approval_status': (data['fix'] or {}).get('approval_status', 'not_applicable')}
 
 
 @router.get('/incidents/{incident_id}/patch')
 def patch(incident_id: str, db: Session = Depends(get_db)):
-    return serialized(get_fix(db, incident_id))
+    get_fix(db, incident_id)
+    return details(db, incident_id)['fix']
+
+
+def check_review_evidence(db, incident):
+    inv = db.scalar(select(Investigation).where(Investigation.incident_id == incident.id))
+    for item in inv.evidence_references if inv else []:
+        if item['kind'] == 'source' and digest(read_source(incident_source(incident), item['path'])) != item['sha256']:
+            raise StaleSnapshotError('Cited source changed since investigation. Submit a new incident.')
 
 
 def decide(incident_id, decision, body, db, actor='local developer'):
@@ -207,7 +223,12 @@ def decide(incident_id, decision, body, db, actor='local developer'):
     if decision == 'approved':
         if fix.validation_result.get('status') not in ('passed', 'partial'):
             raise HTTPException(409, 'Approval requires completed validation without failed checks.')
-        if any(digest(read_source(incident_source(incident), f['path'])) != f['original_sha256'] for f in fix_files(fix)):
+        try:
+            check_review_evidence(db, incident)
+            changed_source = any(digest(read_source(incident_source(incident), f['path'])) != f['original_sha256'] for f in fix_files(fix))
+        except StaleSnapshotError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if changed_source:
             raise HTTPException(409, 'Source changed since investigation. Submit a new incident.')
     changed = db.execute(update(ProposedFix).where(ProposedFix.id == fix.id, ProposedFix.approval_status == 'pending',
         ProposedFix.validation_result['status'].as_string() != 'running').values(
@@ -338,6 +359,10 @@ def publish_reviewed_fix(incident_id, db):
         return {'url': fix.pr_url}
     if not settings.github_token or not settings.github_repository or incident.repository not in ('local', 'github'):
         raise HTTPException(409, 'A configured GitHub target and a local or GitHub source are required.')
+    try:
+        check_review_evidence(db, incident)
+    except StaleSnapshotError as exc:
+        raise HTTPException(409, str(exc)) from None
     available = True if db.get_bind().dialect.name == 'postgresql' else ProposedFix.pr_status != 'creating'
     claimed = db.execute(update(ProposedFix).where(ProposedFix.id == fix.id, available).values(pr_status='creating'))
     if claimed.rowcount != 1:

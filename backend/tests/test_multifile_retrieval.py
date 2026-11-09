@@ -20,7 +20,7 @@ def test_multifile_generation_plan_and_stale_second_file(client, monkeypatch, tm
         db.add(incident); db.commit(); identifier = incident.id
     changes = [{'path':p,'proposed_code':originals[p].replace('1','2')} for p in ('one.py','two.py')]
     monkeypatch.setattr(workflow.llm,'generate',lambda *args: {'path':'one.py','proposed_code':'x = 2\n','files':changes,'explanation':'Update pair','risks':[]})
-    state = {'incident_id':identifier,'mode':'live','config':{'model':'test'},'repository':'local','analysis':{'summary':'test'},
+    state = {'incident_id':identifier,'mode':'live','config':{'model':'test'},'repository':'local','analysis':{'summary':'test', 'disposition':'supported', 'citation_validation':{'version':1}, 'hypotheses':[{'supporting_evidence':[{'kind':'log'}, {'kind':'source'}]}]},
              'evidence':[{'kind':'source','path':p,'sha256':digest(content)} for p,content in originals.items()]}
     fix = workflow.fix(state)
     assert len(fix['files']) == 2 and 'b/two.py' in fix['diff']

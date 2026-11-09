@@ -50,3 +50,45 @@ Incident details include `jobs` and `audit`. Patch records include `files` (per-
 
 
 Provider configuration: `/api/settings` accepts `provider: "openai" | "gemini"` and the matching `model`. Its response includes credential-free `providers` availability/default-model records; `live_available` reflects the selected provider. Initial values come from `LLM_PROVIDER`, `OPENAI_MODEL`, and `GEMINI_MODEL`. Environment keys stay server-side. Investigation config and live reports identify their snapshotted provider/model. Gemini quota/access failures appear as safe agent errors; no provider fallback occurs.
+
+## Repair outcomes (additive)
+
+`GET /api/incidents/{id}`, `/patch`, and `/report` now return `repair_outcome`, independent of lifecycle, check execution and human approval. Incident detail also includes the same object inside `fix`. Existing status fields remain compatible.
+
+```json
+{"repair_outcome":{"status":"PATCH_UNVERIFIED","reasons":["Independent isolated proof is incomplete."],"validation_run_id":null}}
+```
+
+Statuses are `VERIFIED`, `PATCH_UNVERIFIED`, `NOT_REPRODUCED`, `VALIDATION_FAILED`, and `INSUFFICIENT_EVIDENCE`. Unassessed work returns null. Provider/workflow failure is not scored as evidence-based abstention. Explicit check/execution failures override non-reproduction; non-reproduction overrides incomplete proof. An active validation invalidates any prior positive conclusion until the new run finishes.
+
+All views resolve the same latest stored artifacts. Historical `passed` checks are not promoted to VERIFIED. Only the exact controlled checkout fixture can currently qualify, after immutable independent tests reproduce the expected failure and pass all four regressions in authorized isolation. Generic repository test suites remain unverified even when red-to-green. Approval and draft-PR eligibility continue to follow the existing check/status gates and never alter this outcome.
+
+Validation manifests add `role: "test" | "source"`. Test/config/support patch targets are rejected. Manifest, content, current source, patch and runner-policy checks run at authorization and execution. Persisted `isolated.proof` records scoped reproduction/regression booleans, test hash, source manifest, patch digest and environment separately from exit statuses. Legacy unconsumed plans without test roles require replanning; completed historical runs remain readable.
+
+## Source snapshots and precise citations
+
+New incidents include `repository_snapshot` (migration `005`) with a snapshot ID, capture kind, repository-binding digest, optional commit SHA, bounded path/SHA-256 manifest, and coverage description. Local Git sources pin HEAD plus captured working-tree bytes; `modified: true` means captured files differ from that commit. The flag is scoped to captured files, not the entire Git repository. Non-Git folders, unborn repositories and bundled fixtures use an explicitly labeled content snapshot without an invented commit. GitHub continues to use its pinned commit.
+
+Local/sample file reads during investigation, validation and review use incident-scoped references (`local@{incident_id}` / `sample@{incident_id}`). The configured root, current HEAD and requested file hash must match the captured values. Stale evidence blocks analysis/patch generation and approval. The source snapshot is never silently refreshed on retry. Existing historical incidents retain an empty manifest and are not relabeled as revision-pinned.
+
+Source evidence adds `content_sha256` (the redacted text), `snapshot_id` and nullable `commit_sha` while retaining `sha256` for original bytes. Source redaction preserves line numbers, including multiline private keys. Citations carry:
+
+```json
+{
+  "evidence_id": "E2",
+  "kind": "source",
+  "path": "checkout.py",
+  "line_start": 3,
+  "line_end": 3,
+  "quote": "    return price / discount",
+  "sha256": "original-file-sha256",
+  "snapshot_id": "captured-snapshot-sha256",
+  "commit_sha": null
+}
+```
+
+Hash examples above are placeholders; real references require 64-character SHA-256 values. The backend validates identity, path, original hash, snapshot/revision, redacted-content integrity, bounded line range (1–50 lines), and the exact full quoted lines. Quotes preserve indentation and join lines with LF. Log citations use the saved redacted log digest as snapshot ID and a null commit SHA.
+
+Analysis adds citation-backed `observations`, at most three hypotheses with `supporting_evidence`, `contradicting_evidence`, `missing_checks`, and `disposition: supported | insufficient_evidence`. Compatibility `observed_facts` and `evidence_ids` are derived from validated structured references. Uncited factual claims are not retained as observations. Invalid references fail the analysis stage. Missing support or unresolved primary-hypothesis checks/contradictions force insufficient evidence and prevent patch generation. A code patch additionally requires both source and log support.
+
+`citation_validation` describes quotation/provenance checks only. It does not prove that the quoted code caused the incident or that a model's interpretation is true. Historical analysis is shown as legacy, without a claim that precise citations were validated.

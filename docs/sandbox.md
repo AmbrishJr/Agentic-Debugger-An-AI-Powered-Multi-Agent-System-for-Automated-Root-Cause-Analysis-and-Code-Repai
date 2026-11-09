@@ -81,3 +81,13 @@ CI=1 AUTORCA_E2E_SANDBOX=1 npm run test:e2e
 These use synthetic source and isolated test databases. Normal pytest tests mock the Docker adapter and do not launch containers.
 
 The output-limit verification exposed a blocked attach-stream cleanup timeout. The controller now closes that stream before removing the container; the repeated real timeout/output checks passed and left no test containers.
+
+## Independent proof gate
+
+Repair outcomes now distinguish isolated process results from verified repair. Test filenames, test-directory contents and known test configuration/support paths cannot be patched in a validation plan. All selected files, including tests, are hashed and checked again when the worker starts. Changed or expired queued plans fail without execution.
+
+For this release, only the exact application-owned checkout fixture qualifies for VERIFIED. The source, proposed replacement and independent test digest must match the reviewed fixture; unittest must report the expected two failures/two errors before, four passing tests after, and successful bounded execution/cleanup. The proof retains content-based provenance and runner policy. Generic repository output is never trusted as equivalent proof. Pytest remains supported for measured execution but cannot earn this narrowly scoped proof yet.
+
+The existing host-run demo is explicitly labeled and stays PATCH_UNVERIFIED. Test process errors, timeouts, truncated output and failed cleanup block positive outcomes. No additional code executes on the host if isolation is unavailable.
+
+No database migration is required: artifacts use existing JSON columns. Roll back application code without dropping data; old clients ignore additive outcome fields. Recreate pending plans after changing versions because test-manifest policy changed. Rollback removes the stricter verification presentation/guards, so do not treat old `passed` labels as repair verification.

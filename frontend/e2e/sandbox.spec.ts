@@ -42,9 +42,14 @@ test("reviewed snapshot authorization runs real isolated before and after tests"
   await expect(
     page.getByRole("heading", { name: "After patch · passed · exit 0" }),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Verified repair" })).toBeVisible();
+  const incidentId = page.url().split("/").at(-2);
+  const report = await page.request.get(`/api/incidents/${incidentId}/report`);
+  expect((await report.json()).repair_outcome.status).toBe("VERIFIED");
   await page.getByRole("button", { name: "Approve fix", exact: true }).click();
   await expect(page.getByText("Decision recorded")).toBeVisible();
   await page.reload();
   await expect(page.getByText("Decision recorded")).toBeVisible();
   await expect(page.getByText(/Isolated run /)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Verified repair" })).toBeVisible();
 });

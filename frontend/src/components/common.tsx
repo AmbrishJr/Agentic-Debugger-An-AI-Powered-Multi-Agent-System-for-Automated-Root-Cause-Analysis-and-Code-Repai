@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { label, date } from "@/lib/utils";
-import { Incident, Validation } from "@/types";
+import { Incident, Validation, RepairOutcome, Citation, RepositorySnapshot } from "@/types";
 
 export function Badge({ value }: { value: string }) {
   return (
@@ -114,11 +114,29 @@ export function IncidentTable({ incidents }: { incidents: Incident[] }) {
     </div>
   );
 }
+export function RepairOutcomePanel({ outcome }: { outcome?: RepairOutcome | null }) {
+  if (!outcome) return null;
+  const titles: Record<RepairOutcome["status"], string> = {
+    VERIFIED: "Verified repair",
+    PATCH_UNVERIFIED: "Patch unverified",
+    NOT_REPRODUCED: "Issue not reproduced",
+    VALIDATION_FAILED: "Validation failed",
+    INSUFFICIENT_EVIDENCE: "Insufficient evidence",
+  };
+  return (
+    <section className="panel panel-body" aria-label="Repair outcome">
+      <h3>{titles[outcome.status]}</h3>
+      {outcome.reasons.map((reason) => <p key={reason}>{reason}</p>)}
+      {outcome.validation_run_id && <p className="fine-print">Validation run: {outcome.validation_run_id}</p>}
+      <p className="fine-print">Human approval records a review decision; it does not verify or deploy a repair.</p>
+    </section>
+  );
+}
 export function ValidationPanel({ validation }: { validation: Validation }) {
   return (
     <div className="validation">
       <div className="section-heading">
-        <h3>Validation results</h3>
+        <h3>Validation checks</h3>
         <Badge value={validation.status || "pending"} />
       </div>
       {validation.checks?.map((c) => (
@@ -142,7 +160,8 @@ export function ValidationPanel({ validation }: { validation: Validation }) {
       <p className="fine-print">{validation.limitations}</p>
       {validation.fixture?.before && (
         <details>
-          <summary>View before / after test output</summary>
+          <summary>View demo before / after test output</summary>
+          <p className="fine-print">Measured trusted demo on the host; not isolated repair verification.</p>
           <h4>Before fix · expected failure</h4>
           <pre>{validation.fixture.before.output}</pre>
           <h4>After fix</h4>
@@ -151,4 +170,34 @@ export function ValidationPanel({ validation }: { validation: Validation }) {
       )}
     </div>
   );
+}
+
+export function SourceProvenance({ snapshot }: { snapshot?: RepositorySnapshot }) {
+  if (!snapshot?.snapshot_id) return <p className="fine-print">Legacy investigation: no pinned source manifest.</p>;
+  return <details className="panel panel-body">
+    <summary>Source provenance</summary>
+    <p className="fine-print" style={{ overflowWrap: "anywhere" }}>
+      {snapshot.commit_sha ? `Commit: ${snapshot.commit_sha}` : "Content snapshot; no Git commit recorded."}
+    </p>
+    <p className="fine-print" style={{ overflowWrap: "anywhere" }}>Snapshot: {snapshot.snapshot_id}</p>
+    {snapshot.modified === true && <p>Captured files include working-tree changes; the commit alone does not identify these contents.</p>}
+    <p className="fine-print">{snapshot.coverage}</p>
+  </details>;
+}
+
+export function EvidenceCitations({ citations, title }: { citations?: Citation[]; title: string }) {
+  if (!citations?.length) return null;
+  return <div>
+    <h4>{title}</h4>
+    {citations.map((c, index) => <details key={`${c.evidence_id}-${c.line_start}-${index}`}>
+      <summary style={{ overflowWrap: "anywhere" }}>
+        {c.evidence_id} · {c.path}:{c.line_start}–{c.line_end}
+      </summary>
+      <pre className="numbered-code">{c.quote}</pre>
+      <p className="fine-print" style={{ overflowWrap: "anywhere" }}>
+        {c.commit_sha ? `Commit ${c.commit_sha}` : "Content-pinned reference"} · SHA-256 {c.sha256}
+      </p>
+      <a href={`#evidence-${c.evidence_id}`}>Open collected evidence</a>
+    </details>)}
+  </div>;
 }

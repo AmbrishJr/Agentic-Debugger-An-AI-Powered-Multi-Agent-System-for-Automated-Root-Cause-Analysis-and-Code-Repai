@@ -1,3 +1,28 @@
+export type RepositorySnapshot = {
+  version?: number;
+  kind?: string;
+  commit_sha?: string | null;
+  snapshot_id?: string;
+  modified?: boolean | null;
+  coverage?: string;
+  files?: Record<string, string>;
+};
+export type Citation = {
+  evidence_id: string;
+  kind: "source" | "log";
+  path: string;
+  line_start: number;
+  line_end: number;
+  quote: string;
+  sha256: string;
+  snapshot_id: string;
+  commit_sha: string | null;
+};
+export type RepairOutcome = {
+  status: "VERIFIED" | "PATCH_UNVERIFIED" | "NOT_REPRODUCED" | "VALIDATION_FAILED" | "INSUFFICIENT_EVIDENCE";
+  reasons: string[];
+  validation_run_id: string | null;
+};
 export type Incident = {
   id: string;
   title: string;
@@ -7,6 +32,7 @@ export type Incident = {
   mode: "demo" | "live";
   repository: string;
   repository_commit?: string;
+  repository_snapshot?: RepositorySnapshot;
   created_at: string;
   updated_at: string;
 };
@@ -18,8 +44,14 @@ export type Evidence = {
   line_end: number;
   content: string;
   sha256: string;
+  content_sha256?: string;
+  snapshot_id?: string;
+  commit_sha?: string | null;
 };
 export type Analysis = {
+  disposition?: "supported" | "insufficient_evidence";
+  observations?: { statement: string; citations: Citation[] }[];
+  citation_validation?: { version: number; status: string; limitation: string };
   summary: string;
   observed_facts: string[];
   hypotheses: {
@@ -28,6 +60,9 @@ export type Analysis = {
     confidence: string;
     evidence_ids: string[];
     uncertainty: string;
+    supporting_evidence?: Citation[];
+    contradicting_evidence?: Citation[];
+    missing_checks?: string[];
   }[];
 };
 export type Validation = {
@@ -40,6 +75,7 @@ export type Validation = {
   };
 };
 export type Fix = {
+  repair_outcome?: RepairOutcome | null;
   files: {
     path: string;
     original_code: string;
@@ -69,6 +105,7 @@ export type Execution = {
   error_details: string | null;
 };
 export type Report = {
+  repair_outcome?: RepairOutcome | null;
   summary: string;
   risk_assessment: string;
   next_steps: string[];
@@ -90,6 +127,7 @@ export type Results = {
   fix?: { available: boolean; reason?: string };
 };
 export type Detail = Incident & {
+  repair_outcome?: RepairOutcome | null;
   jobs: {
     id: string;
     kind: string;

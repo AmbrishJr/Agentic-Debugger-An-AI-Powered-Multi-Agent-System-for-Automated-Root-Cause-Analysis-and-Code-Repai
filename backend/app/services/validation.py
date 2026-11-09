@@ -38,7 +38,7 @@ def validate(source: str, path: str, original_hash: str, proposed: str, mode: st
     else:
         checks.append({'name': 'Syntax validation', 'status': 'skipped', 'detail': 'Only Python syntax validation is supported.'})
     fixture = {}
-    if mode == 'demo' and source == 'sample' and current == BUGGY and proposed == FIXED and matches:
+    if mode == 'demo' and source.split('@')[0] == 'sample' and current == BUGGY and proposed == FIXED and matches:
         before, after = run_trusted_fixture(BUGGY), run_trusted_fixture(FIXED)
         fixture = {'before': before, 'after': after}
         checks.extend([

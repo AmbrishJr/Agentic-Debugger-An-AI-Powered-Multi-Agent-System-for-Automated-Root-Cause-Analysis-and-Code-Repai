@@ -266,3 +266,21 @@ The compose stack exposes the UI on `127.0.0.1:3000` and the API on `127.0.0.1:8
 Live AI has now been verified with the user-selected Gemini provider on the bundled synthetic incident; see [the Gemini report](docs/gemini-validation.json). A real OpenAI request remains intentionally untested and is not needed to use Gemini. Optional later expansions include SSO/tenant isolation, deployment/monitoring integrations, neural embeddings or pgvector, and non-Python test profiles. The current hybrid retriever uses curated concept vocabulary and TF-IDF cosine vectors over up to 500 recent records, combined with BM25 ranks; it does not claim neural semantic understanding.
 
 Additional integration reports: [real two-file GitHub draft PR](docs/github-multifile-validation.json), [isolated unittest and pytest](docs/sandbox-validation.json). Repeat the container-stack check with `backend/.venv/bin/python scripts/validate_compose.py --execute`; it uses generated test credentials and removes only its own disposable stack.
+
+## Measurable repair outcomes and evaluation
+
+Investigation, review and JSON reports now distinguish **VERIFIED**, **PATCH_UNVERIFIED**, **NOT_REPRODUCED**, **VALIDATION_FAILED** and **INSUFFICIENT_EVIDENCE** from workflow completion and approval. The trusted host demo still runs its real tests, but remains unverified for isolated repair purposes. Generic red-to-green test runs do not establish independent proof. Only the exact bundled fixture can currently qualify after authorized isolated verification of immutable tests.
+
+Run the eight-case offline benchmark with:
+
+```bash
+backend/.venv/bin/python scripts/evaluate.py --output data/evaluations/offline
+```
+
+It uses a disposable database, makes no model calls, and writes JSON/Markdown with explicit denominators and unscored diagnoses. See [evaluation instructions](benchmarks/README.md), [accuracy audit](docs/ACCURACY_AUDIT.md), and [implementation verification](docs/IMPLEMENTATION_PROGRESS.md). Live evaluation and isolated execution require separate CLI flags. No new configuration variables or database migration are needed.
+
+### Pinned source and citation grounding
+
+New local investigations capture the Git commit (when available) and a bounded file-hash manifest at submission. Dirty working-tree content and non-Git folders are labeled explicitly. If the root, revision or a requested file changes, submit a fresh incident; retry does not repin old evidence. Source quotes now carry checked paths, line ranges, hashes and provenance. Supporting evidence, contradictions and missing diagnostic checks appear in the investigation UI; unresolved primary-hypothesis diagnostics block patch generation.
+
+Migration `005` adds a JSON snapshot column while preserving existing records. Local startup applies migrations through the existing mechanism; hosted installations must apply migrations using their existing deployment procedure before upgrading application code. See [source grounding operations](docs/source-grounding.md). Exact citation validation establishes provenance, not causal correctness; live accuracy remains unmeasured.

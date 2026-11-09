@@ -116,6 +116,12 @@ def test_live_workflow_uses_structured_provider_and_skips_host_execution(client,
             'FixSuggestion': {'path': 'checkout.py', 'proposed_code': FIXED, 'explanation': 'Apply percentage discount.', 'risks': ['Behavior changes.']},
             'ReportNarrative': {'summary': 'Review the checkout fix.', 'risk_assessment': 'Behavior not tested in live mode.', 'next_steps': ['Run CI.']},
         }
+        if schema.__name__ == 'Analysis':
+            from app.services.grounding import reference
+            log, source = payload['evidence'][:2]
+            refs = [reference(log, 5, 5), reference(source, 3, 3)]
+            outputs['Analysis'].update(disposition='supported', observations=[{'statement': 'Division by zero is logged.', 'citations': [refs[0]]}])
+            outputs['Analysis']['hypotheses'][0]['supporting_evidence'] = refs
         return schema.model_validate(outputs[schema.__name__]).model_dump()
     monkeypatch.setattr(workflow.llm, 'generate', structured)
     _, data = investigate(client, mode='live')

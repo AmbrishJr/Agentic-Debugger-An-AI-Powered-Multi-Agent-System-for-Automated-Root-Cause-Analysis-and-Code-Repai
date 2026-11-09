@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "percentage",
+      "cause": "Division was used instead of applying the retained percentage.",
+      "files": [
+        "checkout.py"
+      ],
+      "expected_evidence": [
+        "checkout.py",
+        "submitted.log"
+      ],
+      "uncertain": false,
+      "repair_eligible": true,
+      "tests": {
+        "test_checkout.py": "import unittest\nfrom checkout import calculate_discount\n\nclass DiscountTests(unittest.TestCase):\n    def test_zero_discount(self):\n        self.assertEqual(calculate_discount(100, 0), 100)\n\n    def test_percentage_discount(self):\n        self.assertEqual(calculate_discount(100, 20), 80)\n\n    def test_full_discount(self):\n        self.assertEqual(calculate_discount(100, 100), 0)\n\n    def test_invalid_inputs(self):\n        for price, discount in [(-1, 0), (100, -1), (100, 101)]:\n            with self.assertRaises(ValueError):\n                calculate_discount(price, discount)\n\nif __name__ == \"__main__\":\n    unittest.main(verbosity=2)\n"
+      },
+      "reference_patch": {
+        "checkout.py": "def calculate_discount(price, discount):\n    \"\"\"Return the final price after a percentage discount (0 through 100).\"\"\"\n    if price < 0 or not 0 <= discount <= 100:\n        raise ValueError(\"Price must be non-negative and discount between 0 and 100\")\n    return price * (1 - discount / 100)\n"
+      }
+    },
+    {
+      "id": "null-input",
+      "cause": "Missing tags are iterated without normalization.",
+      "files": [
+        "tags.py"
+      ],
+      "expected_evidence": [
+        "tags.py",
+        "submitted.log"
+      ],
+      "uncertain": false,
+      "repair_eligible": true,
+      "tests": {
+        "test_tags.py": "import unittest\nfrom tags import *\n\nclass IndependentTests(unittest.TestCase):\n    def test_missing(self):\n        self.assertEqual(normalize(None), [])\n    def test_existing(self):\n        self.assertEqual(normalize([\"A\"]), [\"a\"])\n"
+      },
+      "reference_patch": {
+        "tags.py": "def normalize(tags):\n    return [x.lower() for x in (tags or [])]\n"
+      }
+    },
+    {
+      "id": "boundary",
+      "cause": "The inclusive age threshold uses a strict comparison.",
+      "files": [
+        "age.py"
+      ],
+      "expected_evidence": [
+        "age.py",
+        "submitted.log"
+      ],
+      "uncertain": false,
+      "repair_eligible": true,
+      "tests": {
+        "test_age.py": "import unittest\nfrom age import *\n\nclass IndependentTests(unittest.TestCase):\n    def test_boundary(self):\n        self.assertTrue(adult(18))\n    def test_neighbors(self):\n        self.assertFalse(adult(17))\n        self.assertTrue(adult(19))\n"
+      },
+      "reference_patch": {
+        "age.py": "def adult(age):\n    return age >= 18\n"
+      }
+    },
+    {
+      "id": "cross-file",
+      "cause": "The caller swaps price and count.",
+      "files": [
+        "invoice.py"
+      ],
+      "expected_evidence": [
+        "invoice.py",
+        "submitted.log"
+      ],
+      "uncertain": false,
+      "repair_eligible": true,
+      "tests": {
+        "test_invoice.py": "import unittest\nfrom invoice import *\n\nclass IndependentTests(unittest.TestCase):\n    def test_order(self):\n        self.assertEqual(invoice(10, 3), 36)\n    def test_empty(self):\n        self.assertEqual(invoice(10, 0), 0)\n"
+      },
+      "reference_patch": {
+        "invoice.py": "from pricing import total\ndef invoice(price, count):\n    return total(price, count)\n"
+      }
+    },
+    {
+      "id": "configuration",
+      "cause": "A nonempty false string is coerced to True.",
+      "files": [
+        "config.py"
+      ],
+      "expected_evidence": [
+        "config.py",
+        "submitted.log"
+      ],
+      "uncertain": false,
+      "repair_eligible": true,
+      "tests": {
+        "test_config.py": "import unittest\nfrom config import *\n\nclass IndependentTests(unittest.TestCase):\n    def test_false(self):\n        self.assertFalse(enabled(\"false\"))\n    def test_true(self):\n        self.assertTrue(enabled(\"true\"))\n"
+      },
+      "reference_patch": {
+        "config.py": "def enabled(value):\n    return value.lower() == \"true\"\n"
+      }
+    },
+    {
+      "id": "external-service",
+      "cause": "The upstream failure response is parsed as a success without checking status.",
+      "files": [
+        "gateway.py"
+      ],
+      "expected_evidence": [
+        "gateway.py",
+        "submitted.log"
+      ],
+      "uncertain": false,
+      "repair_eligible": true,
+      "tests": {
+        "test_gateway.py": "import unittest\nfrom gateway import fetch\nclass Client:\n    def __init__(self, response): self.response = response\n    def get(self): return self.response\nclass IndependentTests(unittest.TestCase):\n    def test_failure(self):\n        with self.assertRaises(RuntimeError): fetch(Client({\"status\":503}))\n    def test_success(self):\n        self.assertEqual(fetch(Client({\"status\":200,\"data\":42})),42)\n"
+      },
+      "reference_patch": {
+        "gateway.py": "def fetch(client):\n    response = client.get()\n    if response[\"status\"] != 200:\n        raise RuntimeError(\"Upstream failure\")\n    return response[\"data\"]\n"
+      }
+    },
+    {
+      "id": "missing-logs",
+      "cause": null,
+      "files": [],
+      "expected_evidence": [],
+      "uncertain": true,
+      "repair_eligible": false,
+      "tests": {},
+      "reference_patch": {}
+    },
+    {
+      "id": "missing-source",
+      "cause": null,
+      "files": [],
+      "expected_evidence": [
+        "submitted.log"
+      ],
+      "uncertain": true,
+      "repair_eligible": false,
+      "tests": {},
+      "reference_patch": {}
+    }
+  ]
+}

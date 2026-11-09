@@ -23,6 +23,7 @@ class Incident(Base):
     mode: Mapped[str] = mapped_column(String, default='demo')
     repository: Mapped[str] = mapped_column(String, default='sample')
     selected_files: Mapped[list] = mapped_column(JSON, default=list)
+    repository_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
     repository_commit: Mapped[str] = mapped_column(String, default='')
     repository_name: Mapped[str] = mapped_column(String, default='')
     created_at: Mapped[str] = mapped_column(String, default=now, index=True)

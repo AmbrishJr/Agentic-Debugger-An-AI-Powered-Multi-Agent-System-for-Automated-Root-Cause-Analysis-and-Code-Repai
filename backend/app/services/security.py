@@ -63,16 +63,22 @@ def safe_path(source: str, relative: str) -> Path:
 
 
 def read_source(source: str, path: str) -> str:
+    if source.startswith(('local@', 'sample@')):
+        from app.services.repository_snapshots import read_pinned
+        return read_pinned(source, path)
     if source == 'github' or source.startswith('github@'):
         from app.services.github_source import read_file
         return read_file(source, path)
-    text = safe_path(source, path).read_text(encoding='utf-8')
+    text = safe_path(source, path).read_bytes().decode('utf-8')
     if len(text.encode()) > 80000:
         raise ValueError('File exceeds the evidence limit.')
     return text
 
 
 def list_files(source: str) -> list[str]:
+    if source.startswith(('local@', 'sample@')):
+        from app.services.repository_snapshots import pinned_files
+        return pinned_files(source)
     if source == 'github' or source.startswith('github@'):
         from app.services.github_source import files
         return files(source)
@@ -101,4 +107,13 @@ def incident_source(incident):
         if not re.fullmatch(r'[a-f0-9]{40}', incident.repository_commit):
             raise ValueError('GitHub incident has no pinned source revision.')
         return 'github@' + incident.repository_commit
+    if incident.repository in ('local', 'sample') and getattr(incident, 'repository_snapshot', None):
+        return incident.repository + '@' + incident.id
     return incident.repository
+
+
+def redact_source(text: str) -> str:
+    # Preserve original line numbers when removing a multiline private key.
+    text = re.sub(r'-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----',
+                  lambda m: '[REDACTED PRIVATE KEY]' + '\n' * m.group().count('\n'), text)
+    return redact(text)
