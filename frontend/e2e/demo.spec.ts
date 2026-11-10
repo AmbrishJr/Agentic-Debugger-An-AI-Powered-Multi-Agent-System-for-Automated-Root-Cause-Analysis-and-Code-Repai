@@ -17,6 +17,8 @@ test("complete demo, inspect evidence and tests, approve, and find it in history
   await page.getByText("Source provenance", { exact: true }).click();
   await expect(page.getByText(/Snapshot:/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Supporting evidence" })).toBeVisible();
+  await page.locator("#evidence-E2 > summary").click();
+  await expect(page.locator("#evidence-E2").getByText("Why this file", { exact: true })).toBeVisible();
   await expect(page.getByText("Exact quotations and provenance are validated; causal interpretations remain hypotheses.", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", {
@@ -109,11 +111,14 @@ test("settings save and dashboard renders stored analytics", async ({
   await page.getByLabel("AI provider", { exact: true }).selectOption("gemini");
   await expect(page.getByLabel("Model", { exact: true })).toHaveValue("gemini-3.5-flash-lite");
   await page.getByLabel("Maximum historical matches").fill("4");
+  await page.getByLabel("Source retrieval", { exact: true }).selectOption("stack");
   await page.getByRole("button", { name: "Save configuration" }).click();
   await expect(page.getByRole("status")).toContainText("Configuration saved");
   await page.reload();
   await expect(page.getByLabel("AI provider", { exact: true })).toHaveValue("gemini");
   await expect(page.getByLabel("Maximum historical matches")).toHaveValue("4");
+  await expect(page.getByLabel("Source retrieval", { exact: true })).toHaveValue("stack");
+  await page.getByLabel("Source retrieval", { exact: true }).selectOption("symbols");
   await page.getByLabel("AI provider", { exact: true }).selectOption("openai");
   await page.getByRole("button", { name: "Save configuration" }).click();
   await expect(page.getByRole("status")).toContainText("Configuration saved");

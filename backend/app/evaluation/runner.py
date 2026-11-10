@@ -12,6 +12,7 @@ import uuid
 from app.evaluation.contracts import EvaluationDataset, OracleDataset, Adjudication
 from app.evaluation.metrics import aggregate, prediction_digest
 from app.services.security import allowed_path, digest
+from app.services.validation_runs import protected_test_path
 
 
 def load_dataset(directory):
@@ -23,6 +24,8 @@ def load_dataset(directory):
     by_id = {o.id: o for o in oracles.cases}
     for case in inputs.cases:
         oracle = by_id[case.id]
+        if any(not protected_test_path(p) for p in oracle.tests):
+            raise ValueError('Independent tests must use protected test filenames or test directories.')
         if set(case.sources) & set(oracle.tests):
             raise ValueError('Independent tests must be separate from investigation sources.')
         frames = re.findall(r'File "([^"]+)"', case.error_log)
@@ -114,6 +117,8 @@ def run(args, scratch):
         raise ValueError('No matching evaluation cases.')
     rows = []
     with TestClient(app) as client:
+        client.put('/api/settings', json={'provider': args.provider or 'openai',
+            'model': args.model or 'gpt-4.1-mini', 'source_retrieval': args.source_retrieval}).raise_for_status()
         for case in cases:
             oracle = oracles[case.id]
             source_root = scratch / case.id
@@ -126,7 +131,7 @@ def run(args, scratch):
             log = case.error_log or '[No diagnostic logs supplied.]'
             started = time.monotonic()
             response = client.post('/api/incidents', json={'title': case.title, 'error_log': log,
-                'repository': case.repository, 'selected_files': case.selected_files, 'mode': args.mode})
+                'repository': case.repository, 'selected_files': [] if args.without_file_hints else case.selected_files, 'mode': args.mode})
             response.raise_for_status()
             identifier = response.json()['id']
             client.post(f'/api/incidents/{identifier}/investigate', json={}).raise_for_status()
@@ -184,6 +189,7 @@ def run(args, scratch):
             rows.append({'case_id': case.id, 'split': case.split, 'mode': args.mode,
                 'configuration': detail['investigation']['config'], 'environment': case.environment,
                 'repository_snapshot': detail.get('repository_snapshot', {}),
+                'source_retrieval': (prediction['evidence'] or [{}])[0].get('retrieval', {}),
                 'source_manifest': {path: digest(content) for path, content in sorted(sources.items())},
                 'prediction': prediction, 'prediction_sha256': hashed, 'adjudication': decision.model_dump() if decision else None,
                 'outcome': outcome, 'repair_outcome': detail.get('repair_outcome'),
@@ -208,13 +214,15 @@ def run(args, scratch):
             'application_source_sha256': digest(''.join(str(p.relative_to(Path(__file__).resolve().parents[3])) + p.read_text() for folder in ('backend/app', 'frontend/src') for p in sorted((Path(__file__).resolve().parents[3] / folder).rglob('*')) if p.is_file() and p.suffix in ('.py', '.tsx', '.ts'))),
             'configuration': {'mode': args.mode, 'provider': args.provider if args.mode == 'live' else None,
                               'model': args.model if args.mode == 'live' else None, 'split': args.split,
-                              'max_cases': args.max_cases, 'isolated_authorized': args.authorize_isolated},
+                              'max_cases': args.max_cases, 'isolated_authorized': args.authorize_isolated,
+                              'source_retrieval': args.source_retrieval, 'file_hints': not args.without_file_hints},
             'metrics': aggregate(rows), 'cases': rows}
 
 
 def markdown(result):
     lines = ['# Evaluation results', '', 'Mode: ' + result['configuration']['mode'], '',
-             'These results do not measure live-model accuracy unless mode is explicitly live.', '', '| Metric | Result |', '| --- | --- |']
+             'These results do not measure live-model accuracy unless mode is explicitly live.', '',
+             'Source retrieval: ' + result['configuration']['source_retrieval'] + '; file hints: ' + str(result['configuration']['file_hints']), '', '| Metric | Result |', '| --- | --- |']
     for name, value in result['metrics'].items():
         if isinstance(value, dict) and 'denominator' in value:
             text = f"{value['numerator']}/{value['denominator']}" if value['denominator'] else 'not available (0 denominator)'

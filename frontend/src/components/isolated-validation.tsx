@@ -6,6 +6,8 @@ import { api, post } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge, ErrorBox } from "@/components/common";
 import { useAuth } from "@/components/auth";
+import { specificationInput, VerificationSpecificationSummary } from "@/components/verification-specification";
+import type { BoundVerificationSpecification, SpecificationAssessment } from "@/types";
 
 type Run = {
   id: string;
@@ -20,6 +22,8 @@ type Run = {
     memory_mb: number;
   };
   result: {
+    verification_spec?: BoundVerificationSpecification;
+    specification_assessment?: SpecificationAssessment;
     error?: string;
     before?: {
       status: string;
@@ -57,6 +61,11 @@ export function IsolatedValidation({
   const [profile, setProfile] = useState("python-unittest");
   const [consent, setConsent] = useState(false);
   const [plan, setPlan] = useState<Run | null>(null);
+  const [specEnabled, setSpecEnabled] = useState(false);
+  const [specReviewed, setSpecReviewed] = useState(false);
+  const [reproduction, setReproduction] = useState("");
+  const [regressions, setRegressions] = useState("");
+  const [rationale, setRationale] = useState("");
   const runner = useQuery({
     queryKey: ["sandbox"],
     queryFn: () => api<{ available: boolean; reason: string }>("/sandbox"),
@@ -85,6 +94,8 @@ export function IsolatedValidation({
       post<Run>(`/incidents/${id}/validation-plans`, {
         files: selected,
         profile,
+        verification_spec: specEnabled && profile === "python-unittest"
+          ? specificationInput(reproduction, regressions, rationale, specReviewed) : undefined,
       }),
     onSuccess: (r) => {
       setPlan(r);
@@ -192,11 +203,37 @@ export function IsolatedValidation({
                 ))}
             </div>
           </details>
+          {!plan && profile === "python-unittest" && <div className="hypothesis">
+            <label className="checkbox-label"><input type="checkbox" checked={specEnabled}
+              onChange={(e) => { setSpecEnabled(e.target.checked); setSpecReviewed(false); }} />
+              Add reviewed reproduction and regression expectations
+            </label>
+            {specEnabled && <>
+              <p className="fine-print">Use tests already present in the incident snapshot. Name the expected failures and the regressions that must pass. Matching repository output does not independently verify a generic repair.</p>
+              <label htmlFor="reproduction-tests">Expected reproduction failures</label>
+              <textarea id="reproduction-tests" rows={4} value={reproduction}
+                placeholder="test_checkout.DiscountTests.test_zero_discount | ZeroDivisionError"
+                onChange={(e) => { setReproduction(e.target.value); setSpecReviewed(false); }} />
+              <p className="fine-print">One dotted unittest ID | ExpectedException per line. Every baseline failure must be declared.</p>
+              <label htmlFor="required-regressions">Required regression tests</label>
+              <textarea id="required-regressions" rows={4} value={regressions}
+                placeholder="test_checkout.DiscountTests.test_zero_discount"
+                onChange={(e) => { setRegressions(e.target.value); setSpecReviewed(false); }} />
+              <p className="fine-print">One dotted unittest ID per line. These tests must all pass after the patch; reproduction tests must also pass.</p>
+              <label htmlFor="specification-rationale">Why these tests cover the incident</label>
+              <textarea id="specification-rationale" rows={3} maxLength={1000} value={rationale}
+                onChange={(e) => { setRationale(e.target.value); setSpecReviewed(false); }} />
+              <label className="checkbox-label"><input type="checkbox" checked={specReviewed}
+                onChange={(e) => setSpecReviewed(e.target.checked)} />
+                I reviewed these existing tests and their expected behavior against the incident.
+              </label>
+            </>}
+          </div>}
           {!plan && (
             <Button
               variant="outline"
               className="full-width"
-              disabled={!selected.length || prepare.isPending}
+              disabled={!selected.length || prepare.isPending || (specEnabled && profile === "python-unittest" && !specReviewed)}
               onClick={() => prepare.mutate()}
             >
               <ShieldCheck size={15} />
@@ -224,6 +261,7 @@ export function IsolatedValidation({
                   </li>
                 ))}
               </ul>
+              <VerificationSpecificationSummary spec={plan.result.verification_spec} />
               <label className="checkbox-label">
                 <input
                   type="checkbox"
@@ -270,6 +308,7 @@ export function IsolatedValidation({
             {run.result.error && (
               <p className="error-text">{run.result.error}</p>
             )}
+            <VerificationSpecificationSummary spec={run.result.verification_spec} assessment={run.result.specification_assessment} />
             {run.status === "cleanup_failed" && user?.role !== "viewer" && (
               <Button variant="outline" disabled={cleanup.isPending} onClick={() => cleanup.mutate(run.id)}>
                 {cleanup.isPending ? "Cleaning up…" : "Retry sandbox cleanup"}

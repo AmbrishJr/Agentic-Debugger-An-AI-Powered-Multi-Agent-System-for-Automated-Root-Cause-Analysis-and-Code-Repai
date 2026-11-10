@@ -32,6 +32,7 @@ class Triage(StrictModel):
 
 
 class Evidence(StrictModel):
+    retrieval: dict = Field(default_factory=dict)
     id: str
     kind: Literal['source', 'log']
     path: str
@@ -112,6 +113,7 @@ class Reopen(StrictModel):
 
 class Preferences(StrictModel):
     provider: Literal['openai', 'gemini'] = 'openai'
+    source_retrieval: Literal['stack', 'symbols'] = 'symbols'
     retrieval_mode: Literal['keyword', 'hybrid'] = 'hybrid'
     model: str = Field(default='gpt-4.1-mini', pattern=r'^[a-zA-Z0-9._:-]{1,100}$')
     retrieval_limit: int = Field(default=5, ge=1, le=10)
@@ -129,9 +131,39 @@ class PullRequestRequest(StrictModel):
     authorized: Literal[True]
 
 
+class ReproductionExpectation(StrictModel):
+    test_id: str = Field(pattern=r'^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*){2,}$', max_length=240)
+    expected_exception: str = Field(pattern=r'^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$', max_length=120)
+
+
+class VerificationSpecification(StrictModel):
+    version: Literal[1] = 1
+    reviewed: Literal[True]
+    rationale: str = Field(min_length=10, max_length=1000)
+    reproduction: list[ReproductionExpectation] = Field(min_length=1, max_length=20)
+    regressions: list[str] = Field(min_length=1, max_length=40)
+
+    @model_validator(mode='after')
+    def unique_tests(self):
+        import re
+        ids = [item.test_id for item in self.reproduction]
+        if len(set(ids)) != len(ids) or len(set(self.regressions)) != len(self.regressions):
+            raise ValueError('Test IDs must be unique within each test role.')
+        if any(len(value) > 240 or not re.fullmatch(r'[A-Za-z_]\w*(?:\.[A-Za-z_]\w*){2,}', value) for value in self.regressions):
+            raise ValueError('Use dotted unittest IDs: module.Class.test_method.')
+        return self
+
+
 class ValidationPlanRequest(StrictModel):
     files: list[str] = Field(min_length=1, max_length=32)
     profile: Literal['python-unittest', 'python-pytest'] = 'python-unittest'
+    verification_spec: VerificationSpecification | None = None
+
+    @model_validator(mode='after')
+    def specification_profile(self):
+        if self.verification_spec and self.profile != 'python-unittest':
+            raise ValueError('Reviewed verification specifications currently require unittest.')
+        return self
 
 
 class ValidationAuthorization(StrictModel):

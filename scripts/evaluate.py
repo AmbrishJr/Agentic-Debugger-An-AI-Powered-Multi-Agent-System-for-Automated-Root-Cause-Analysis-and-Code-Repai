@@ -23,6 +23,8 @@ def main():
     parser.add_argument('--authorize-isolated', action='store_true')
     parser.add_argument('--check-fixtures', action='store_true')
     parser.add_argument('--adjudications', type=Path)
+    parser.add_argument('--source-retrieval', choices=['stack', 'symbols'], default='symbols')
+    parser.add_argument('--without-file-hints', action='store_true', help='Remove selected-file hints for a source-localization ablation.')
     args = parser.parse_args()
     if args.mode == 'live' and not (args.allow_live and args.provider and args.model and args.max_cases):
         parser.error('Live evaluation requires --allow-live, --provider, --model and --max-cases. Costs may be incurred; cost instrumentation is unavailable.')

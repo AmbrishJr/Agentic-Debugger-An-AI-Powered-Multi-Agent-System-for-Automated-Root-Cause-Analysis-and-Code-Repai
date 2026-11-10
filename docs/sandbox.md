@@ -91,3 +91,9 @@ For this release, only the exact application-owned checkout fixture qualifies fo
 The existing host-run demo is explicitly labeled and stays PATCH_UNVERIFIED. Test process errors, timeouts, truncated output and failed cleanup block positive outcomes. No additional code executes on the host if isolation is unavailable.
 
 No database migration is required: artifacts use existing JSON columns. Roll back application code without dropping data; old clients ignore additive outcome fields. Recreate pending plans after changing versions because test-manifest policy changed. Rollback removes the stricter verification presentation/guards, so do not treat old `passed` labels as repair verification.
+
+## Reviewed test expectations
+
+The review page can now attach a versioned reproduction/regression specification to a unittest plan. It names expected failing tests and exception types, required regressions, and a reviewed rationale. The server binds these to existing incident test hashes, records the reviewer, and includes the declaration in authorization and execution integrity checks. Existing runner images work without rebuilding: the evaluator reads their bounded verbose unittest output and summary.
+
+Wrong exceptions, unrelated failures, missing or skipped tests, inconsistent discovery and incomplete observations fail the required specification check. Matching output remains an untrusted observation and does not qualify generic repairs as VERIFIED. The exact bundled proof remains a separate requirement. Execution consent, isolation, expiry and cleanup behavior are unchanged. [Verification specification operations](verification-specifications.md) documents the API, supported unittest formats and remaining independent-oracle work.

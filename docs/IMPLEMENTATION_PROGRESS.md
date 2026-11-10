@@ -1,4 +1,8 @@
-# First upgrade checkpoint
+# Implementation checkpoints
+
+The latest work is recorded under **Fourth upgrade: reviewed reproduction and regression specifications** below. Earlier checkpoints are retained as historical evidence.
+
+## First upgrade checkpoint
 
 Date: 2026-11-10 (Asia/Kolkata). Implemented measurement and conservative repair outcomes in the existing application. No production database migration, publication, deployment, or live provider call was performed. The pre-existing edit to `docs/security.md` is preserved.
 
@@ -70,3 +74,157 @@ Existing lifecycle fields, approval gates, authentication and draft-PR behavior 
 Generic independent reproduction, arbitrary test dependency integrity, line-level causal evidence, local commit pinning, symbol-aware retrieval and calibrated live accuracy remain future work. Arbitrary test output is never a trusted coverage oracle. Pytest can execute but does not earn the restricted checkout proof. Live provider token/cost telemetry is not implemented; live costs stay unknown. The two held-out cases test uncertainty only, not diagnosis generalization.
 
 Next prioritized slice: pin local source revisions and introduce validated line-level hypotheses; then independent reproduction/regression specifications for general repositories. Require stale-revision, fabricated-citation, contradictory-evidence and generic test-tampering acceptance tests before broadening VERIFIED eligibility.
+
+## Second upgrade: pinned source and citation grounding
+
+Implemented after the first checkpoint, preserving its work and the user's original `docs/security.md` changes.
+
+### Delivered
+
+- New local incidents capture Git HEAD plus a bounded file-hash manifest. Captured working-tree differences are labeled separately; non-Git and unborn repositories use content snapshots. A separate repository-binding digest catches root switches. File reads preserve exact UTF-8 bytes, including CRLF differences.
+- Investigation reads validate manifest identity, repository root, revision and requested file bytes. Collected sources are rechecked before/after analysis, before patch generation, and at approval/initial PR publication. Changed source requires a new incident; retry never silently repins it.
+- Typed citations validate evidence ID, path, kind, original hash, content integrity, snapshot, revision, line range and exact full-line quotation. Source redaction preserves line positions. Empty citation lists explicitly report `no_citations`.
+- Observations carry citations; hypotheses retain supporting and contradicting evidence and missing diagnostics. Unresolved primary-hypothesis diagnostics or absent source/log support block patch generation. This checks provenance, not the semantic truth of a model explanation.
+- The investigation/review UI shows source provenance, working-tree differences, cited quotations and uncertainty. Historical records are visibly legacy, with no invented snapshot or retroactive precise-citation claim.
+- The evaluation harness pins independent test hashes without including their contents in model evidence; stack traces referencing those hidden tests are rejected. It retains snapshots and reports exact-citation validity separately from ID-reference validity.
+
+### Files added or extended in this slice
+
+New: `backend/app/services/repository_snapshots.py`, `backend/app/services/grounding.py`, `backend/migrations/versions/005_source_snapshots.py`, `backend/tests/test_grounding.py`, `docs/source-grounding.md`.
+
+Extended: `backend/app/models/records.py`, `backend/app/schemas/contracts.py`, `backend/app/services/security.py`, `backend/app/services/validation.py`, `backend/app/agents/workflow.py`, `backend/app/api/routes.py`, `backend/app/evaluation/runner.py`, `backend/app/evaluation/metrics.py`, `backend/tests/test_workflow.py`, `backend/tests/test_multifile_retrieval.py`, `frontend/src/types/index.ts`, `frontend/src/components/common.tsx`, `frontend/src/components/common.test.tsx`, both investigation/review pages, `frontend/e2e/demo.spec.ts`, `README.md`, `benchmarks/README.md`, `docs/api.md`, `docs/ACCURACY_AUDIT.md`, this checkpoint.
+
+### Verification
+
+| Command | Measured result |
+| --- | --- |
+| `PYTHONPATH=backend backend/.venv/bin/pytest backend/tests -q` | **134 passed, 10 skipped**, two existing deprecation warnings. |
+| `PYTHONPATH=backend backend/.venv/bin/pytest backend/tests/test_grounding.py -q` | **31 passed** after the final Git transport/helper hardening. |
+| `cd frontend && npm test` | **13 passed**. |
+| `cd frontend && npm run typecheck` | Passed. |
+| `cd frontend && npm run build` | Passed production build. |
+| `cd frontend && AUTORCA_E2E_SANDBOX=1 npm run test:e2e` | Five scenarios passed, including real isolated repair. One new assertion matched both visible text and raw agent JSON and was corrected. |
+| `cd frontend && npm run test:e2e -- e2e/demo.spec.ts -g 'complete demo'` | Corrected scenario passed; all six browser scenarios now have passing results. |
+| `backend/.venv/bin/python scripts/evaluate.py --output data/evaluations/grounding-offline` | Eight cases completed, zero provider calls, no isolated repair claims. |
+| `SANDBOX_PROVIDER=docker backend/.venv/bin/python scripts/evaluate.py --authorize-isolated --check-fixtures --output data/evaluations/grounding-isolated` | Eight cases completed; bundled proposed repair VERIFIED; all six reference pairs failed before/passed after. |
+
+The grounding suite covers local Git/subdirectory/non-Git sources, dirty content, new HEAD with identical file bytes, CRLF edits, root switches, source changes mid-investigation, forged citation components, redaction/line mapping, contradictions, abstention without patch generation, empty-citation status, and SQLite migration upgrade/downgrade with existing data. Fixed Git reads disable fsmonitor/hooks, lazy fetch, transport protocols, credential helpers and terminal prompting, and discard injected Git environment variables.
+
+The ten skipped tests still concern unavailable cloud SDKs and disposable PostgreSQL; hosted migration and live provider calls were not performed. Existing Python-version, deprecation and Next standalone/start warnings remain as recorded above.
+
+### Benchmark artifacts and interpretation
+
+Artifacts: [offline report](../data/evaluations/grounding-offline.md), [offline JSON](../data/evaluations/grounding-offline.json), [isolated report](../data/evaluations/grounding-isolated.md), [isolated JSON](../data/evaluations/grounding-isolated.json). Generated artifacts remain under ignored `data/`.
+
+Both runs recorded **6/6 exact structured references** and **2/2 unique hypothesis ID references**, Top-1 **5/6**, Top-3 **6/6**, patch application **1/1**, abstention precision **2/7**, and abstention recall **2/2**. The earlier ID-reference denominator was 10; unsupported ID-only mentions are now removed, so this denominator change is not an accuracy gain. Six references include repeated citations across observation/hypothesis claims.
+
+The offline run verified **0/6** repair-eligible cases; the authorized isolated run verified **1/6**. All **6/6 reference-patch pairs** passed separately and are excluded from proposed-repair scoring. One free-text diagnosis remains unreviewed; five judgeable demo abstentions remain incorrect (**0/5 scored**, coverage **5/6**). No live-model improvement is claimed.
+
+### Migration and next boundary
+
+Migration **005** adds `incidents.repository_snapshot` with an empty-object default; existing incident data is preserved. It was applied to disposable test/evaluation databases only. Local startup uses the existing migration mechanism. Hosted environments must migrate before deploying the new code. Keep the column when rolling back code to retain provenance; explicit schema downgrade removes only that metadata. Detailed operations are in `source-grounding.md`.
+
+This slice is complete. Remaining work is symbol/dependency-aware retrieval and independent reproduction specifications for generic repositories. Live-model evaluation needs an explicitly selected provider/model and budget. Exact citation validity is a prerequisite for diagnosis quality, not proof of causality or repair correctness.
+
+## Third upgrade: Python symbol and dependency retrieval
+
+Implemented a bounded Python AST index and deterministic multi-file expansion. This checkpoint supersedes the earlier deferred symbol-indexing status; earlier test counts and measurements remain historical. Pre-existing grounding changes were preserved.
+
+### Delivered
+
+- `backend/app/services/source_index.py` indexes definitions, line ranges, static direct calls and imports without importing/executing source. It resolves aliases and relative imports conservatively, avoids ambiguous module/name guesses, expands callers/callees two hops and import neighbors one hop, and preserves explicit selection and stack order.
+- Indexes contain metadata only and use an eight-entry per-process cache bound to repository, snapshot, revision and parser version. Local cache reads recheck source bytes. GitHub cold reads are bounded; warm immutable-revision indexes avoid repeated blob downloads. File/node/byte/time limits and skipped syntax are exposed.
+- Protected tests/support files are excluded from automatic indexing/expansion. Evaluation fixtures must place independent tests under those protected paths, preventing retrieval from exposing oracle bodies.
+- Settings adds `source_retrieval: symbols | stack`, snapshotted per investigation. New work defaults to symbols; old stored configurations without the field retain stack behavior. Source evidence shows selection reasons and symbol ranges. Report JSON includes the coverage summary and per-file metadata.
+- The evaluation CLI adds `--source-retrieval` and `--without-file-hints`. It preserves the same isolated/live authorization boundary, reports configuration and retrieval metadata, and uses the real pipeline for both strategies. A paired CLI regression test verifies localization and hidden-test separation.
+
+No dependency, database migration, execution authorization, deployment or external publishing step was added. Complete bounded source files remain evidence, preserving existing patch-generation compatibility and citation hashes.
+
+### Executed verification
+
+| Command | Result |
+| --- | --- |
+| `PYTHONPATH=backend backend/.venv/bin/pytest backend/tests -q` | **154 passed, 10 skipped**, two existing deprecation warnings. |
+| `cd frontend && npm test` | **15 passed**. |
+| `cd frontend && npm run typecheck` | Passed. |
+| `cd frontend && npm run build` | Passed production build. |
+| `cd frontend && AUTORCA_E2E_SANDBOX=1 npm run test:e2e` | **6 passed**, including retrieval reasons, saved strategy, review/approval/report consistency, roles, lifecycle and real isolated repair. |
+| `backend/.venv/bin/python scripts/evaluate.py --source-retrieval stack --without-file-hints --output data/evaluations/retrieval-stack` | Eight completed demo cases, zero provider calls. |
+| `backend/.venv/bin/python scripts/evaluate.py --source-retrieval symbols --without-file-hints --output data/evaluations/retrieval-symbols` | Eight completed demo cases, zero provider calls. |
+| `git diff --check` | Passed. |
+
+The new source-index tests cover relative/aliased imports, async/class ranges, incoming/outgoing calls, source/file limits, invalid syntax and other-language fallback, trace-line attribution, shadowed names, ambiguous basenames/modules, cache/source changes, renamed symbols, parser-version invalidation, GitHub cache/read budgets, oracle exclusion and configuration snapshots. GitHub behavior uses transport mocks. The browser suite used approved access to loopback servers and the existing pinned Docker runner.
+
+The ten backend skips still require unavailable cloud SDKs or disposable PostgreSQL. Live GitHub indexing, hosted environments and paid model calls were not exercised. Python 3.10 versus the newer declared deployment range, Starlette/LangGraph deprecations and the existing Next standalone/start warning remain as noted in prior checkpoints.
+
+### Matched retrieval benchmark
+
+Artifacts: [stack Markdown](../data/evaluations/retrieval-stack.md), [stack JSON](../data/evaluations/retrieval-stack.json), [symbols Markdown](../data/evaluations/retrieval-symbols.md), [symbols JSON](../data/evaluations/retrieval-symbols.json). Files remain in ignored `data/` and are reproducible with the commands above.
+
+Both runs have dataset SHA-256 `c02b861288cb9f9ccac1a89a74990d9d03d57c79b700e5f24d03966c0552e57e` and application-source SHA-256 `4d45d3dc63bd2e9894cbf06b38aeca140230b66ca2b58193832a5ce823a333c2`. The working tree was dirty; artifacts retain base commit `d52a053139035270f92c12dbdee9cae077d35acf` separately from the actual source digest. Selected-file hints were removed from both; submitted stack traces remained.
+
+| Metric | Stack paths | Symbols/dependencies |
+| --- | --- | --- |
+| Completed cases | 8/8 | 8/8 |
+| Top-1 retrieved-file localization | 5/6 | 5/6 |
+| Top-3 retrieved-file localization | 5/6 | 6/6 |
+| Exact citation validity | 6/6 | 6/6 |
+| Citation ID-reference validity | 2/2 | 2/2 |
+| Patch application | 1/1 | 1/1 |
+| Verified proposed repairs | 0/6 | 0/6 |
+| Abstention precision / recall | 2/7; 2/2 | 2/7; 2/2 |
+| Scored RCA correctness / scoring coverage | 0/5; 5/6 | 0/5; 5/6 |
+| Median / p95 latency (seconds) | 0.15095 / 0.1841 | 0.19095 / 0.2526 |
+| Provider cost | $0; no calls | $0; no calls |
+
+For `cross-file`, stack retrieval returned only `pricing.py`; symbols additionally returned the faulty caller `invoice.py` at rank two. That is the sole localization change. The two held-out cases concern missing evidence, so this is not evidence of held-out diagnosis generalization. One diagnosis remains unreviewed; five judgeable demo abstentions are still incorrect. No live diagnosis improvement is claimed. Latencies are descriptive single-run observations on this machine (browser checks were also active), not a production performance benchmark. Offline runs did not authorize fixture execution and therefore verified no repairs; the separate browser test confirmed the controlled fixture still qualifies in real isolation.
+
+### Remaining work
+
+This retrieval slice is complete. Static Python relationships cannot resolve all runtime dispatch, re-exports, higher-order calls or nested scopes. Non-Python symbol indexing, scalable persistent indexes and production-sized performance evaluation remain open. Generic repositories still need independent failure attribution and regression specifications before their patches can earn VERIFIED. Semantic claim verification, calibrated confidence and broader held-out/live evaluation remain separate work. Live evaluation requires explicit provider, model and case/budget choices.
+
+Operations, cache behavior, rollback to stack retrieval, bounds and reproduction instructions are in [source-retrieval.md](source-retrieval.md). Earlier approval/authentication behavior and the user's security-document changes remain intact.
+
+## Fourth upgrade: reviewed reproduction and regression specifications
+
+Added the declaration and observation layer needed before broader independent repair verification. This slice is complete within that boundary; generic independent proof remains open. Existing work and the user's security-document changes were preserved.
+
+### Delivered
+
+- Optional versioned `verification_spec` on unittest validation plans, with reviewed rationale, reproduction test IDs/exceptions and required regression IDs. The server records the authenticated reviewer/time and binds IDs to existing incident test hashes and snapshot identity. It parses test definitions without importing or executing them.
+- Authorization hashes include the complete bound specification. Authorization and execution recheck its integrity; plan/patch changes during execution discard positive proof and observations. Existing expiry, one-use consent, test immutability and fixed isolation policies remain intact. Interrupted workers retain the declaration for audit.
+- `services/verification_specs.py` checks complete verbose unittest observations against the declared expectation. Wrong exceptions, unrelated baseline failures, patched failures, missing/skipped tests, duplicate records/summaries, changed discovery, inconsistent process results and incomplete cleanup cannot produce a match.
+- Explicit assessment statuses (`matched`, `not_reproduced`, `mismatch`, `inconclusive`) and per-test observations persist separately from process exit status. Mismatch/inconclusive required checks fail validation; baseline passing results remain NOT_REPRODUCED when no explicit failure overrides them.
+- The review UI collects and displays expectations before execution consent. Incident, patch and report responses retain the same latest specification and assessment. Matching observations explicitly carry `independent_proof: false`; generic repair outcomes remain conservative.
+
+Existing clients can omit the specification, and ordinary pytest runs remain supported. No new database migration, dependency, image rebuild, service, deployment or paid provider call was added. The existing exact bundled fixture retains its separate VERIFIED proof gate; a failed specification overrides that positive fixture proof too.
+
+### Executed verification
+
+| Command | Result |
+| --- | --- |
+| `PYTHONPATH=backend backend/.venv/bin/pytest backend/tests/test_sandbox.py backend/tests/test_repair_outcomes.py -q` | **32 passed** after the plan integration. |
+| `PYTHONPATH=backend backend/.venv/bin/pytest backend/tests/test_verification_specs.py -q` | **31 passed**, using mocked runner observations. |
+| `PYTHONPATH=backend backend/.venv/bin/pytest backend/tests -q` | **185 passed, 10 skipped**, two existing deprecation warnings. |
+| `cd frontend && npm test` | **19 passed**. |
+| `cd frontend && npm run typecheck` | Passed. |
+| `cd frontend && npm run build` | Passed production build. |
+| `cd frontend && AUTORCA_E2E_SANDBOX=1 npm run test:e2e` | **7 passed**, including two real isolated execution scenarios. |
+| `backend/.venv/bin/python scripts/evaluate.py --output data/evaluations/verification-specs-offline` | Eight completed offline demo cases; zero provider calls and no additional fixture execution. |
+| `git diff --check` | Passed. |
+
+The real positive browser scenario reviewed four expected failures and four regression IDs, produced `matched` observations, and retained the exact controlled fixture's VERIFIED outcome after approval and report download. The real negative scenario declared ValueError where the fixture raises ZeroDivisionError: patched tests passed, but the specification reported `mismatch` and the UI/API showed VALIDATION_FAILED. Neither browser result is a generic-repository accuracy measurement.
+
+Backend tests cover declaration rejection, server-assigned reviewer identity, snapshot/test bindings, changes before authorization/while queued/during execution, historical requests, unsupported profiles, both known unittest ID display forms, exact exceptions, missing/duplicated/skipped/contradictory observations, cleanup/time/output failures, report consistency, restart retention, and forged matching output on a patch outside the controlled fixture. The forged-output case remains PATCH_UNVERIFIED.
+
+Ten tests still require unavailable cloud SDKs or disposable PostgreSQL. Live providers, live GitHub indexing and hosted execution were not exercised. The existing Python deployment-version discrepancy, Starlette/LangGraph deprecations and Next standalone/start warning remain. Browser verification used the already configured pinned Docker image and approved loopback access; no image or runner installation occurred.
+
+### Offline compatibility measurement
+
+Artifacts: [Markdown](../data/evaluations/verification-specs-offline.md), [JSON](../data/evaluations/verification-specs-offline.json), under ignored `data/`. Default symbol retrieval with selected-file hints recorded Top-1 **5/6**, Top-3 **6/6**, exact citations **6/6**, patch application **1/1**, and verified repairs **0/6**. RCA scoring remains **0/5** with coverage **5/6** and one unreviewed diagnosis. Cost is **$0**, with no provider calls. These unchanged demo metrics are a compatibility check, not evidence of live-model accuracy improvement or specification execution in the benchmark.
+
+### Remaining proof boundary
+
+Reviewing existing tests does not establish independent authorship, causal relevance or trustworthy runtime telemetry. Generic repository code can forge stdout, so even perfectly matching observations remain untrusted. Before broadening VERIFIED, implement a separately trusted oracle/observation channel with independent test provenance and reviewed attribution/regression rules. Version 1 does not support inherited/dynamic tests, altered verbose output, subtest failure formats or pytest specifications. Multi-language retrieval, semantic claim support, calibrated confidence and live/held-out diagnosis evaluation remain open as previously recorded.
+
+See [verification specification operations](verification-specifications.md) for the API, UI workflow, limits and rollback behavior. No external publication was performed.

@@ -111,7 +111,7 @@ BACKEND_URL=http://127.0.0.1:8000
 AUTORCA_API_TOKEN=
 ```
 
-The Settings page persists the provider, model, default investigation mode, evidence file limit, retrieval mode, and historical match limit. Each investigation snapshots these values at start. A saved model preference overrides the environment default. Credentials can only be configured through backend environment variables; the UI receives availability flags, not secrets.
+The Settings page persists the provider, model, default investigation mode, evidence file limit, source retrieval strategy, historical retrieval mode, and historical match limit. Each investigation snapshots these values at start. A saved model preference overrides the environment default. Credentials can only be configured through backend environment variables; the UI receives availability flags, not secrets.
 
 ### Live AI Mode
 
@@ -284,3 +284,13 @@ It uses a disposable database, makes no model calls, and writes JSON/Markdown wi
 New local investigations capture the Git commit (when available) and a bounded file-hash manifest at submission. Dirty working-tree content and non-Git folders are labeled explicitly. If the root, revision or a requested file changes, submit a fresh incident; retry does not repin old evidence. Source quotes now carry checked paths, line ranges, hashes and provenance. Supporting evidence, contradictions and missing diagnostic checks appear in the investigation UI; unresolved primary-hypothesis diagnostics block patch generation.
 
 Migration `005` adds a JSON snapshot column while preserving existing records. Local startup applies migrations through the existing mechanism; hosted installations must apply migrations using their existing deployment procedure before upgrading application code. See [source grounding operations](docs/source-grounding.md). Exact citation validation establishes provenance, not causal correctness; live accuracy remains unmeasured.
+
+### Python symbol and dependency retrieval
+
+New investigations can retrieve static callers, callees and imported files around selected code and stack traces. Evidence explains each file's selection and exposes indexed symbol ranges, with bounded parsing and revision-aware caching. No repository code runs during indexing. Other languages retain path-based retrieval; Settings can restore that strategy for all sources. See [retrieval operations and limits](docs/source-retrieval.md).
+
+The eight-case offline comparison without selected-file hints measured Top-3 source localization at **5/6 with path retrieval and 6/6 with symbol retrieval**; Top-1 stayed **5/6**. This is a small retrieval result, not measured live-model diagnosis accuracy. Reproduction commands are in [benchmark instructions](benchmarks/README.md).
+
+### Reviewed reproduction and regression expectations
+
+Before authorizing isolated unittest execution, reviewers can declare the tests that should fail, their expected exceptions, and the regressions that must pass. The plan freezes those expectations with the existing incident test hashes. Missing tests, unrelated failures and wrong exceptions fail validation even if patched execution exits successfully. Reports preserve the declaration and per-test observations. Matching generic repository output remains unverified; the independent proof boundary is unchanged. See [verification specification instructions](docs/verification-specifications.md).

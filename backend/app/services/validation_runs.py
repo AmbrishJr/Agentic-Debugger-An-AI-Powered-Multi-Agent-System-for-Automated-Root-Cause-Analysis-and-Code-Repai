@@ -8,6 +8,7 @@ from app.services.security import read_source, digest, redact, incident_source
 from app.services import sandbox
 from app.services.patches import fix_files
 from app.services.sample import BUGGY, FIXED, REGRESSION_TEST
+from app.services.verification_specs import bind_spec, assess_spec
 
 
 def patch_digest(fix):
@@ -28,15 +29,23 @@ def protected_test_path(path):
             or name.startswith(('pytest', 'unittest')))
 
 
-def plan_digest(run_id, manifest, patch_hash, policy):
-    return digest(json.dumps({'id': run_id, 'files': manifest, 'patch': patch_hash, 'policy': policy}, sort_keys=True))
+def plan_digest(run_id, manifest, patch_hash, policy, specification=None):
+    value = {'id': run_id, 'files': manifest, 'patch': patch_hash, 'policy': policy}
+    if specification is not None:
+        value['verification_spec'] = specification
+    return digest(json.dumps(value, sort_keys=True))
 
 
 def check_integrity(incident, fix, run):
     if run.policy != sandbox.policy(run.policy['profile']) or patch_digest(fix) != run.proposed_sha256:
         raise ValueError('Runner policy or proposed code changed. Prepare a new plan.')
-    if plan_digest(run.id, run.manifest, run.proposed_sha256, run.policy) != run.plan_hash:
+    specification = run.result.get('verification_spec')
+    if plan_digest(run.id, run.manifest, run.proposed_sha256, run.policy, specification) != run.plan_hash:
         raise ValueError('Validation manifest changed. Prepare a new plan.')
+    if specification is not None:
+        if run.policy['profile'] != 'python-unittest' or specification != bind_spec(specification['declaration'], run.snapshot,
+                incident.repository_snapshot, specification['reviewer'], specification['reviewed_at']):
+            raise ValueError('Verification specification changed. Prepare a new plan.')
     if {item['path'] for item in run.manifest} != set(run.snapshot) or len(run.manifest) != len(run.snapshot):
         raise ValueError('Snapshot manifest does not match its files.')
     for item in run.manifest:
@@ -94,7 +103,7 @@ def expire_plans(db):
         db.commit()
 
 
-def prepare_plan(incident, fix, paths, profile='python-unittest'):
+def prepare_plan(incident, fix, paths, profile='python-unittest', verification_spec=None, reviewer='local developer'):
     if fix.approval_status != 'pending' or incident.status not in ('awaiting_review', 'partial'):
         raise ValueError('Prepare and run tests before recording the final review decision.')
     if any(protected_test_path(f['path']) for f in fix_files(fix)):
@@ -122,11 +131,15 @@ def prepare_plan(incident, fix, paths, profile='python-unittest'):
         raise ValueError('Snapshot and patch exceed the 1 MiB limit.')
     identifier = uid()
     policy = sandbox.policy(profile)
+    if verification_spec is not None and profile != 'python-unittest':
+        raise ValueError('Reviewed verification specifications currently require unittest.')
+    specification = bind_spec(verification_spec, snapshot, incident.repository_snapshot, reviewer, now()) if verification_spec is not None else None
     patch_hash = patch_digest(fix)
-    plan_hash = plan_digest(identifier, manifest, patch_hash, policy)
+    plan_hash = plan_digest(identifier, manifest, patch_hash, policy, specification)
     return ValidationRun(id=identifier, incident_id=incident.id, fix_id=fix.id, status='planned',
         plan_hash=plan_hash, manifest=manifest, snapshot=snapshot, policy=policy,
-        proposed_sha256=patch_hash, expires_at=(datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(), result={})
+        proposed_sha256=patch_hash, expires_at=(datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+        result={'verification_spec': specification} if specification is not None else {})
 
 
 def check_plan(incident, fix, run, expected_hash):
@@ -157,7 +170,8 @@ def execute_validation(run_id):
         for f in fix_files(fix):
             proposed[f['path']] = f['proposed_code']
         policy = run.policy
-        checks = [c for c in fix.validation_result.get('checks', []) if c['name'] not in ('Repository tests', 'Isolated tests before fix', 'Isolated tests after fix')]
+        specification = run.result.get('verification_spec')
+        checks = [c for c in fix.validation_result.get('checks', []) if c['name'] not in ('Repository tests', 'Isolated tests before fix', 'Isolated tests after fix', 'Reviewed verification specification')]
     try:
         if integrity_error:
             raise ValueError('Execution integrity check failed.')
@@ -169,6 +183,12 @@ def execute_validation(run_id):
         result = {'before': before, 'after': after, 'policy': policy,
                   'proof': fixture_proof(original, proposed, policy, before, after, run.proposed_sha256, run.manifest),
                   'interpretation': 'Isolated process exit status is measured. Repository test output and counts are untrusted evidence, not proof of correctness or coverage.'}
+        if specification is not None:
+            assessment = assess_spec(specification, before, after)
+            result.update(verification_spec=specification, specification_assessment=assessment)
+            checks.append({'name': 'Reviewed verification specification',
+                'status': {'matched': 'passed', 'not_reproduced': 'skipped', 'mismatch': 'failed', 'inconclusive': 'error'}[assessment['status']],
+                'detail': ' '.join(assessment['reasons']) + ' ' + assessment['limitations']})
         state = 'completed' if after['status'] in ('passed', 'failed') else 'error'
         status = after['status'] if state == 'completed' else 'error'
         if any(p.get('timed_out') or p.get('output_limited') for p in (before, after)):
@@ -180,7 +200,9 @@ def execute_validation(run_id):
              'detail': 'Original suite exited nonzero; inspect output for the actual cause.' if before['status'] == 'failed' else 'The original failure was not reproduced; inspect the baseline output.'},
             {'name': 'Isolated tests after fix', 'status': after['status'], 'detail': policy['profile'] + '; no network, host mounts, or application credentials.'},
         ])
-        if status == 'passed' and any(c['status'] == 'failed' for c in checks):
+        if any(c['status'] == 'error' for c in checks):
+            status = 'error'
+        elif status == 'passed' and any(c['status'] == 'failed' for c in checks):
             status = 'failed'
         elif status == 'passed' and any(c['status'] == 'skipped' for c in checks):
             status = 'partial'
@@ -188,12 +210,17 @@ def execute_validation(run_id):
         cleaned = integrity_error or all([sandbox.cleanup(sandbox.container_name(run_id, phase)) for phase in ('before', 'after')])
         state, status = ('error' if cleaned else 'cleanup_failed'), 'error'
         result = {'error': 'Runner failed. No repository code was executed on the host.', 'cleanup_succeeded': cleaned}
+        if specification is not None:
+            result['verification_spec'] = specification
     with SessionLocal() as db:
         run, fix = db.get(ValidationRun, run_id), db.get(ProposedFix, run.fix_id)
-        if patch_digest(fix) != run.proposed_sha256:
+        if (patch_digest(fix) != run.proposed_sha256
+                or plan_digest(run.id, run.manifest, run.proposed_sha256, run.policy, run.result.get('verification_spec')) != run.plan_hash
+                or run.result.get('verification_spec') != specification):
             state, status = 'error', 'error'
-            result['error'] = 'Patch changed during validation; proof discarded.'
+            result['error'] = 'Patch or authorized plan changed during validation; proof discarded.'
             result.pop('proof', None)
+            result.pop('specification_assessment', None)
         run.status, run.finished_at, run.result = state, now(), result
         # Drop snapshot bodies after execution; keep audit manifest and hash.
         run.snapshot = {}

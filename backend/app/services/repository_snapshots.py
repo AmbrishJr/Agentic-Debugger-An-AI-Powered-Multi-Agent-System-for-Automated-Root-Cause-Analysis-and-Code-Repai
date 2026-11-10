@@ -21,9 +21,10 @@ def git_read(root, *args):
     # Ignore injected GIT_* environment and global/system config; never invoke status,
     # filters, diffs, hooks, or a repository-defined executable.
     env = {'PATH': os.defpath, 'HOME': str(root), 'GIT_CONFIG_NOSYSTEM': '1',
-           'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_OPTIONAL_LOCKS': '0', 'GIT_NO_REPLACE_OBJECTS': '1'}
+           'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_OPTIONAL_LOCKS': '0', 'GIT_NO_REPLACE_OBJECTS': '1',
+           'GIT_NO_LAZY_FETCH': '1', 'GIT_TERMINAL_PROMPT': '0'}
     try:
-        result = subprocess.run([git, '--literal-pathspecs', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '-C', str(root), *args],
+        result = subprocess.run([git, '--literal-pathspecs', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '-c', 'protocol.allow=never', '-c', 'credential.helper=', '-C', str(root), *args],
                                 capture_output=True, timeout=10, env=env)
     except (OSError, subprocess.SubprocessError):
         raise ValueError('Repository revision could not be read safely.') from None

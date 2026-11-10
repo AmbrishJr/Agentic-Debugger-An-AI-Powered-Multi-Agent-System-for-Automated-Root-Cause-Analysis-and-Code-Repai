@@ -20,7 +20,7 @@ import {
 import { useIncident } from "@/hooks/use-incident";
 import { post } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Badge, ErrorBox, Loading, ValidationPanel, RepairOutcomePanel, EvidenceCitations, SourceProvenance } from "@/components/common";
+import { Badge, ErrorBox, Loading, ValidationPanel, RepairOutcomePanel, EvidenceCitations, SourceProvenance, RetrievalDetails } from "@/components/common";
 import { date, label } from "@/lib/utils";
 import { Lifecycle } from "@/components/lifecycle";
 import { useAuth } from "@/components/auth";
@@ -307,6 +307,7 @@ export default function Investigation({
                         </span>
                       ))}
                     </pre>
+                    <RetrievalDetails retrieval={e.retrieval} />
                     <p className="hash-label">SHA-256 {e.sha256}</p>
                   </details>
                 ))}

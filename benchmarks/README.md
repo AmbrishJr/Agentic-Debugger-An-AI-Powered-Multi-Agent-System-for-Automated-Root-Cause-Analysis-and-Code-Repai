@@ -10,7 +10,18 @@ backend/.venv/bin/python scripts/evaluate.py --output data/evaluations/offline
 
 The CLI creates and removes a disposable SQLite database and source tree. It disables GitHub credentials, uses inline jobs, and disables model credentials and sandbox execution by default. Ordinary demo validation can execute only the application's existing exact trusted constants on the host. Additional fixture code is parsed in tests, never executed on the host.
 
-The bundled demo case produces a proposed patch. Other cases exercise the real demo abstention path; this dataset does not expand demo diagnosis capabilities. A blank diagnostic log is represented by `[No diagnostic logs supplied.]` to satisfy the existing intake contract. Source ordering follows selected files then stack frames; localization scores measure retrieval order, not model ranking.
+The bundled demo case produces a proposed patch. Other cases exercise the real demo abstention path; this dataset does not expand demo diagnosis capabilities. A blank diagnostic log is represented by `[No diagnostic logs supplied.]` to satisfy the existing intake contract. Source ordering follows the chosen retrieval strategy; localization scores measure retrieval order, not model ranking. Independent test files must use protected test filenames/directories so symbol expansion cannot expose their contents.
+
+## Source retrieval comparison
+
+The default is `--source-retrieval symbols`, matching new application investigations. Use `--source-retrieval stack` for the previous path-based strategy. Selected-file hints remain enabled unless explicitly removed. Compare both without those hints:
+
+```bash
+backend/.venv/bin/python scripts/evaluate.py --source-retrieval stack --without-file-hints --output data/evaluations/retrieval-stack
+backend/.venv/bin/python scripts/evaluate.py --source-retrieval symbols --without-file-hints --output data/evaluations/retrieval-symbols
+```
+
+The dataset and application source hashes must match before comparing results. JSON records both settings, each case's coverage summary, and per-file selection reasons in evidence. Submitted stack traces remain available. This experiment measures localization with stack input, not blind diagnosis. Initial Top-3 results are 5/6 versus 6/6: symbol retrieval adds `invoice.py`, the static caller of the function in the cross-file case's stack. Top-1 remains 5/6. Neither mode improves demo diagnosis or establishes live-model accuracy. See [retrieval limits](../docs/source-retrieval.md) and the latest [verification checkpoint](../docs/IMPLEMENTATION_PROGRESS.md).
 
 ## Isolation and live runs
 

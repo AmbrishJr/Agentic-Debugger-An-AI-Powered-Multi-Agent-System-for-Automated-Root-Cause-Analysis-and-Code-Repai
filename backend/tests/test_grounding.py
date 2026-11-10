@@ -266,3 +266,17 @@ def test_empty_citation_set_is_not_labeled_validated():
     assert result['citation_validation']['status'] == 'no_citations'
     assert result['citation_validation']['count'] == 0
     assert result['disposition'] == 'insufficient_evidence'
+
+
+def test_git_reads_cannot_inherit_transport_or_hook_commands(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from app.services.repository_snapshots import git_read
+    calls=[]
+    monkeypatch.setenv('GIT_SSH_COMMAND','untrusted-command')
+    monkeypatch.setattr('app.services.repository_snapshots.subprocess.run',lambda args, **kwargs: calls.append((args,kwargs)) or SimpleNamespace(returncode=0,stdout=b'true\n'))
+    assert git_read(tmp_path,'rev-parse','--is-inside-work-tree') == b'true\n'
+    args, options = calls[0]
+    assert 'protocol.allow=never' in args and 'credential.helper=' in args
+    assert 'core.fsmonitor=false' in args and 'core.hooksPath=/dev/null' in args
+    assert options['env']['GIT_NO_LAZY_FETCH'] == '1'
+    assert 'GIT_SSH_COMMAND' not in options['env']

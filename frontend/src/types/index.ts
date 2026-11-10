@@ -36,7 +36,44 @@ export type Incident = {
   created_at: string;
   updated_at: string;
 };
+export type VerificationSpecification = {
+  version: 1;
+  reviewed: true;
+  rationale: string;
+  reproduction: { test_id: string; expected_exception: string }[];
+  regressions: string[];
+};
+export type BoundVerificationSpecification = {
+  declaration: VerificationSpecification;
+  reviewer: string;
+  reviewed_at: string;
+  snapshot_id: string;
+  tests: { test_id: string; path: string; sha256: string }[];
+  independence: string;
+  limitations: string;
+};
+export type SpecificationAssessment = {
+  status: "matched" | "not_reproduced" | "mismatch" | "inconclusive";
+  independent_proof: false;
+  limitations: string;
+  reasons: string[];
+  reproduction: { test_id: string; expected_exception: string; observed_match: boolean }[];
+  regressions: { test_id: string; observed_pass: boolean }[];
+};
+export type SourceRetrieval = {
+  strategy?: "stack" | "symbols";
+  rank?: number;
+  reasons?: string[];
+  symbols?: { name: string; kind: string; line_start: number; line_end: number }[];
+  indexed_files?: number;
+  skipped_count?: number;
+  index_limited?: boolean;
+  cache_hit?: boolean;
+  limitations?: string;
+  notices?: string[];
+};
 export type Evidence = {
+  retrieval?: SourceRetrieval;
   id: string;
   kind: string;
   path: string;
@@ -149,6 +186,7 @@ export type Detail = Incident & {
   fix: Fix | null;
 };
 export type Settings = {
+  source_retrieval: "stack" | "symbols";
   retrieval_mode: "keyword" | "hybrid";
   model: string;
   retrieval_limit: number;

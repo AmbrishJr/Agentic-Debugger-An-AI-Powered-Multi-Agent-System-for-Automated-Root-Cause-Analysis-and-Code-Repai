@@ -26,6 +26,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState({
     model: "",
     provider: "openai" as "openai" | "gemini",
+    source_retrieval: "symbols" as "stack" | "symbols",
     retrieval_limit: 5,
     retrieval_mode: "hybrid" as "keyword" | "hybrid",
     max_evidence_files: 5,
@@ -36,6 +37,7 @@ export default function SettingsPage() {
       setForm({
         model: data.model,
         provider: data.provider,
+        source_retrieval: data.source_retrieval ?? "symbols",
         retrieval_limit: data.retrieval_limit,
         retrieval_mode: data.retrieval_mode,
         max_evidence_files: data.max_evidence_files,
@@ -196,6 +198,13 @@ export default function SettingsPage() {
                     })
                   }
                 />
+                <label htmlFor="source-retrieval">Source retrieval</label>
+                <select id="source-retrieval" value={form.source_retrieval}
+                  onChange={(e) => setForm({ ...form, source_retrieval: e.target.value as "stack" | "symbols" })}>
+                  <option value="symbols">Python symbols and dependencies</option>
+                  <option value="stack">Selected files and stack frames</option>
+                </select>
+                <p className="fine-print">Python retrieval can include callers and imported code. Other languages retain path-based retrieval. Relationships guide investigation; they do not prove a root cause.</p>
                 <label htmlFor="evidence-limit">Maximum evidence files</label>
                 <input
                   id="evidence-limit"

@@ -16,6 +16,7 @@ from app.services.patches import unified_patch
 from app.services.grounding import ground_analysis, reference, permits_patch, CitationError
 from app.services.repository_snapshots import StaleSnapshotError
 from app.services.jobs import checkpoint, JobCancelled
+from app.services.source_index import retrieve
 
 AGENTS = ['triage', 'evidence', 'memory', 'analysis', 'fix', 'validation', 'report']
 
@@ -60,22 +61,17 @@ def evidence(state):
     items = [Evidence(id='E1', kind='log', path='submitted.log', line_start=1,
                       line_end=len(log.splitlines()), content=log, sha256=digest(log), content_sha256=digest(log), snapshot_id=digest(log)).model_dump()]
     files = list_files(state['repository'])
-    candidates = list(state['selected_files'])
-    for frame in state.get('triage', {}).get('frames', []):
-        matches = [f for f in files if frame['path'] == f or frame['path'].endswith('/' + f)]
-        if not matches:
-            matches = [f for f in files if f.rsplit('/', 1)[-1] == frame['path'].rsplit('/', 1)[-1]]
-        if len(matches) == 1:
-            candidates.append(matches[0])
-    if state['repository'].split('@')[0] == 'sample':
-        candidates.append('README.md')
-    for path in list(dict.fromkeys(candidates))[:state['config']['max_evidence_files']]:
+    candidates, details, retrieval = retrieve(state['repository'], state.get('repository_snapshot', {}), files,
+        state['selected_files'], state.get('triage', {}).get('frames', []), log,
+        state['config']['max_evidence_files'], state['config'].get('source_retrieval', 'stack'))
+    items[0]['retrieval'] = retrieval
+    for path in candidates:
         raw = read_source(state['repository'], path)
         content = redact_source(raw)
         items.append(Evidence(id=f'E{len(items)+1}', kind='source', path=path, line_start=1,
                               line_end=len(raw.splitlines()), content=content, sha256=digest(raw), content_sha256=digest(content),
                               snapshot_id=state.get('repository_snapshot', {}).get('snapshot_id', ''),
-                              commit_sha=state.get('repository_snapshot', {}).get('commit_sha')).model_dump())
+                              commit_sha=state.get('repository_snapshot', {}).get('commit_sha'), retrieval=details[path]).model_dump())
     return items
 
 
@@ -217,6 +213,7 @@ def report(state):
             'provider': state['config'].get('provider', 'openai') if state['mode'] == 'live' else None,
             'model': state['config']['model'] if state['mode'] == 'live' else None,
             'repository_snapshot': state.get('repository_snapshot', {}),
+            'source_retrieval': (state.get('evidence') or [{}])[0].get('retrieval', {}),
             'triage': state.get('triage', {}), 'analysis': state.get('analysis', {}),
             'evidence': state.get('evidence', []), 'history': state.get('memory', []),
             'affected_files': [e['path'] for e in state.get('evidence', []) if e['kind'] == 'source'],

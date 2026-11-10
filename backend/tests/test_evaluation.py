@@ -71,6 +71,36 @@ def test_cli_refuses_live_without_explicit_parameters(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
+def test_retrieval_ablation_uses_same_inputs_without_oracle_leakage(tmp_path):
+    results = {}
+    _, oracles = load_dataset(ROOT / 'benchmarks/v1')
+    for strategy in ('stack', 'symbols'):
+        target = tmp_path / strategy
+        process = subprocess.run([sys.executable, str(ROOT / 'scripts/evaluate.py'), '--source-retrieval', strategy,
+            '--without-file-hints', '--output', str(target)], capture_output=True, text=True, timeout=60)
+        assert process.returncode == 0, process.stderr
+        results[strategy] = json.loads(target.with_suffix('.json').read_text())
+        assert results[strategy]['configuration']['file_hints'] is False
+        assert results[strategy]['metrics']['api_cost']['mean'] == 0
+        for case in results[strategy]['cases']:
+            assert case['configuration']['source_retrieval'] == strategy
+            assert not {e['path'] for e in case['prediction']['evidence']} & set(oracles[case['case_id']].tests)
+    assert results['stack']['dataset_sha256'] == results['symbols']['dataset_sha256']
+    assert results['stack']['application_source_sha256'] == results['symbols']['application_source_sha256']
+    assert results['stack']['metrics']['top3_retrieved_file'] == ratio(5,6)
+    assert results['symbols']['metrics']['top3_retrieved_file'] == ratio(6,6)
+
+
+def test_oracle_filenames_cannot_be_automatically_indexed(tmp_path):
+    inputs = json.loads((ROOT / 'benchmarks/v1/inputs.json').read_text())
+    oracles = json.loads((ROOT / 'benchmarks/v1/oracles.json').read_text())
+    oracles['cases'][0]['tests'] = {'oracle.py': 'pass\n'}
+    (tmp_path / 'inputs.json').write_text(json.dumps(inputs))
+    (tmp_path / 'oracles.json').write_text(json.dumps(oracles))
+    with pytest.raises(ValueError, match='protected test'):
+        load_dataset(tmp_path)
+
+
 def test_offline_cli_real_pipeline_and_no_oracle_leakage(tmp_path):
     target = tmp_path / 'result'
     process = subprocess.run([sys.executable, str(ROOT / 'scripts/evaluate.py'), '--output',str(target)], capture_output=True, text=True, timeout=60)

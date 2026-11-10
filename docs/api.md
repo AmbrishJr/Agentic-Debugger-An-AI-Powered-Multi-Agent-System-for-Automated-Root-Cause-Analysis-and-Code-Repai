@@ -91,4 +91,20 @@ Hash examples above are placeholders; real references require 64-character SHA-2
 
 Analysis adds citation-backed `observations`, at most three hypotheses with `supporting_evidence`, `contradicting_evidence`, `missing_checks`, and `disposition: supported | insufficient_evidence`. Compatibility `observed_facts` and `evidence_ids` are derived from validated structured references. Uncited factual claims are not retained as observations. Invalid references fail the analysis stage. Missing support or unresolved primary-hypothesis checks/contradictions force insufficient evidence and prevent patch generation. A code patch additionally requires both source and log support.
 
-`citation_validation` describes quotation/provenance checks only. It does not prove that the quoted code caused the incident or that a model's interpretation is true. Historical analysis is shown as legacy, without a claim that precise citations were validated.
+`citation_validation` records a checked-reference count and reports `no_citations` when that count is zero; an empty reference list is never labeled validated. It describes quotation/provenance checks only. It does not prove that the quoted code caused the incident or that a model's interpretation is true. Historical analysis is shown as legacy, without a claim that precise citations were validated.
+
+## Source retrieval metadata
+
+`GET, PUT /api/settings` includes `source_retrieval: "symbols" | "stack"`, defaulting to `symbols` for new investigations. It is snapshotted in investigation config separately from historical `retrieval_mode`. Old investigation configs without the field use `stack` when resumed.
+
+Evidence adds a `retrieval` object. Source items include `strategy`, one-based `rank`, selection `reasons`, and up to 20 `symbols` with `name`, `kind`, `line_start`, and `line_end`. The log item holds the summary: `strategy`, nullable `parser_version`, `cache_hit`, `indexed_files`, `skipped_count`, up to ten `skipped` path/reason entries, `index_limited`, `notices`, and `limitations`. Downloaded reports expose this summary as `source_retrieval` and preserve per-file metadata in `evidence`.
+
+Metadata describes bounded static retrieval, not proof of a root cause. No extra endpoints or schema migration are added. Existing source hashes/citations, file limits, repair outcomes and authorization checks remain in force. [Operational bounds and fallback behavior](source-retrieval.md) describe the Python-only scope.
+
+## Reviewed verification specifications
+
+`POST /api/incidents/{id}/validation-plans` optionally accepts `verification_spec` for the unittest profile. Version 1 requires `reviewed: true`, a rationale, `reproduction: [{test_id, expected_exception}]`, and `regressions: [test_id]`. IDs identify directly declared `module.Class.test_method` methods in selected test files pinned by the incident. The authenticated reviewer and review time are assigned server-side; clients cannot supply a reviewer identity.
+
+The plan's `result.verification_spec` binds the declaration to the incident snapshot and test hashes. It is included in the one-use authorization hash and rechecked before execution. `result.specification_assessment` records `matched`, `not_reproduced`, `mismatch`, or `inconclusive`, per-test observations and `independent_proof: false`. Mismatches and incomplete required observations fail validation; matches do not broaden VERIFIED eligibility. Incident/patch/report responses retain these artifacts through the existing latest-validation fields. Specifications are preserved after interruption and snapshot-body cleanup.
+
+Existing requests without specifications retain their behavior; pytest specifications are rejected while ordinary pytest execution remains supported. See [request example, outcome rules and limits](verification-specifications.md).

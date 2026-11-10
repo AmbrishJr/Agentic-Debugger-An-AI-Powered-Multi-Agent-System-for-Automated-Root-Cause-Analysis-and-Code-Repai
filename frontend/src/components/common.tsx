@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { label, date } from "@/lib/utils";
-import { Incident, Validation, RepairOutcome, Citation, RepositorySnapshot } from "@/types";
+import { Incident, Validation, RepairOutcome, Citation, RepositorySnapshot, SourceRetrieval } from "@/types";
 
 export function Badge({ value }: { value: string }) {
   return (
@@ -199,5 +199,18 @@ export function EvidenceCitations({ citations, title }: { citations?: Citation[]
       </p>
       <a href={`#evidence-${c.evidence_id}`}>Open collected evidence</a>
     </details>)}
+  </div>;
+}
+
+export function RetrievalDetails({ retrieval }: { retrieval?: SourceRetrieval }) {
+  if (!retrieval?.strategy) return null;
+  return <div className="fine-print">
+    {!!retrieval.reasons?.length && <div><strong>Why this file</strong><ul>{retrieval.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div>}
+    {!!retrieval.symbols?.length && <details><summary>Indexed symbols</summary><ul>{retrieval.symbols.map((symbol) => <li key={`${symbol.name}-${symbol.line_start}`}>{symbol.name} · lines {symbol.line_start}–{symbol.line_end}</li>)}</ul></details>}
+    {retrieval.indexed_files !== undefined && <p>Source retrieval: {retrieval.strategy === "symbols" ? "Python symbols and dependencies" : "Selected files and stack frames"} · {retrieval.indexed_files} indexed files</p>}
+    {retrieval.index_limited && <p>Index budget reached; source coverage is partial.</p>}
+    {!!retrieval.skipped_count && <p>{retrieval.skipped_count} files could not be indexed; path-based retrieval remains available.</p>}
+    {retrieval.notices?.map((notice) => <p key={notice}>{notice}</p>)}
+    {retrieval.limitations && <p>{retrieval.limitations}</p>}
   </div>;
 }

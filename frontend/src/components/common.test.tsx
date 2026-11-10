@@ -111,3 +111,19 @@ describe("source grounding", () => {
     expect(screen.getByRole("link", { hidden: true })).toHaveAttribute("href", "#evidence-E2");
   });
 });
+
+describe("retrieval explanations", () => {
+  it("shows why a caller was included without claiming a root cause", async () => {
+    const { RetrievalDetails } = await import("./common");
+    render(<RetrievalDetails retrieval={{ strategy: "symbols", rank: 2, reasons: ["Static caller of calculate in pricing.py."], symbols: [{ name: "invoice", kind: "function", line_start: 2, line_end: 3 }] }} />);
+    expect(screen.getByText("Why this file")).toBeInTheDocument();
+    expect(screen.getByText("Static caller of calculate in pricing.py.")).toBeInTheDocument();
+    expect(screen.getByText("invoice · lines 2–3")).toBeInTheDocument();
+  });
+  it("makes partial index coverage explicit", async () => {
+    const { RetrievalDetails } = await import("./common");
+    render(<RetrievalDetails retrieval={{ strategy: "symbols", indexed_files: 10, skipped_count: 2, index_limited: true }} />);
+    expect(screen.getByText(/coverage is partial/)).toBeInTheDocument();
+    expect(screen.getByText(/2 files could not be indexed/)).toBeInTheDocument();
+  });
+});

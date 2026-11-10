@@ -64,6 +64,11 @@ def files(source):
 def read_file(source, path):
     allowed_path(path)
     sha = tree(source).get(path)
+    return read_blob(sha)
+
+
+def read_blob(sha):
+    # Only hashes obtained from the allowlisted immutable tree reach this helper.
     if not sha or not re.fullmatch(r'[a-f0-9]{40}', sha):
         raise ValueError('File is unavailable or is not a regular allowed source file.')
     blob = request('git/blobs/' + sha, limit=150000)

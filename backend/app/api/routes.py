@@ -424,9 +424,10 @@ def validation_runs(incident_id: str, db: Session = Depends(get_db)):
 
 
 @router.post('/incidents/{incident_id}/validation-plans', status_code=201)
-def validation_plan(incident_id: str, body: ValidationPlanRequest, db: Session = Depends(get_db)):
+def validation_plan(incident_id: str, body: ValidationPlanRequest, request: Request, db: Session = Depends(get_db)):
     expire_plans(db)
-    run = prepare_plan(incident_or_404(db, incident_id), get_fix(db, incident_id), body.files, body.profile)
+    run = prepare_plan(incident_or_404(db, incident_id), get_fix(db, incident_id), body.files, body.profile,
+        body.verification_spec.model_dump() if body.verification_spec else None, request.state.user['username'])
     db.add(run)
     db.commit()
     return public_run(run)

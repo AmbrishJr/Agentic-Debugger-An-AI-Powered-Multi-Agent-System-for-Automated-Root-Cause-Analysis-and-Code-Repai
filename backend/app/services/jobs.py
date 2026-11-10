@@ -80,7 +80,8 @@ def recover():
         for run in db.scalars(select(ValidationRun).where(ValidationRun.status.in_(('running', 'cleanup_failed')))):
             cleaned = all([sandbox.cleanup(sandbox.container_name(run.id, phase)) for phase in ('before', 'after')])
             run.status, run.finished_at, run.snapshot = ('error' if cleaned else 'cleanup_failed'), now(), {}
-            run.result = {'error': 'Worker restarted during isolated validation. Prepare a new authorization.', 'cleanup_succeeded': cleaned}
+            run.result = {**({'verification_spec': run.result['verification_spec']} if 'verification_spec' in run.result else {}),
+                'error': 'Worker restarted during isolated validation. Prepare a new authorization.', 'cleanup_succeeded': cleaned}
             fix = db.get(ProposedFix, run.fix_id)
             fix.validation_result = {**fix.validation_result, 'status': 'error', 'isolated': run.result}
         for job in db.scalars(select(Job).where(Job.status.in_(('queued', 'running')))):
