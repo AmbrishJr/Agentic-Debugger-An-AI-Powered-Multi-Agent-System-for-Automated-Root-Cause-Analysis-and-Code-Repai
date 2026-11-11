@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, JsonValue
 
 Severity = Literal['critical', 'high', 'medium', 'low']
 
@@ -154,15 +154,47 @@ class VerificationSpecification(StrictModel):
         return self
 
 
+class JsonContractCase(StrictModel):
+    id: str = Field(pattern=r'^[a-zA-Z0-9_-]{1,60}$')
+    role: Literal['reproduction', 'regression']
+    input: JsonValue
+    baseline: JsonValue
+    expected: JsonValue
+
+
+class JsonContract(StrictModel):
+    version: Literal[1] = 1
+    reviewed: Literal[True]
+    entrypoint: str = Field(min_length=1, max_length=200)
+    rationale: str = Field(min_length=10, max_length=1000)
+    cases: list[JsonContractCase] = Field(min_length=2, max_length=4)
+
+    @model_validator(mode='after')
+    def bounded_contract(self):
+        import json
+        if {c.role for c in self.cases} != {'reproduction', 'regression'} or len({c.id for c in self.cases}) != len(self.cases):
+            raise ValueError('Include distinct case IDs and both reproduction and regression cases.')
+        for case in self.cases:
+            values = [json.dumps(v, sort_keys=True, allow_nan=False) for v in (case.input, case.baseline, case.expected)]
+            if any(len(v.encode()) > 4096 for v in values):
+                raise ValueError('Contract values must fit within 4 KiB each.')
+            if (values[1] == values[2]) != (case.role == 'regression'):
+                raise ValueError('Reproduction baseline must differ from expected; regression baseline must equal expected.')
+        return self
+
+
 class ValidationPlanRequest(StrictModel):
     files: list[str] = Field(min_length=1, max_length=32)
-    profile: Literal['python-unittest', 'python-pytest'] = 'python-unittest'
+    profile: Literal['python-unittest', 'python-pytest', 'python-json-stdio'] = 'python-unittest'
     verification_spec: VerificationSpecification | None = None
+    json_contract: JsonContract | None = None
 
     @model_validator(mode='after')
     def specification_profile(self):
         if self.verification_spec and self.profile != 'python-unittest':
             raise ValueError('Reviewed verification specifications currently require unittest.')
+        if (self.json_contract is not None) != (self.profile == 'python-json-stdio'):
+            raise ValueError('The JSON profile requires a JSON contract, and other profiles cannot use one.')
         return self
 
 

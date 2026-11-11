@@ -9,6 +9,7 @@ from app.services import sandbox
 from app.services.patches import fix_files
 from app.services.sample import BUGGY, FIXED, REGRESSION_TEST
 from app.services.verification_specs import bind_spec, assess_spec
+from app.services.json_contracts import bind_contract, execute_contract
 
 
 def patch_digest(fix):
@@ -43,9 +44,13 @@ def check_integrity(incident, fix, run):
     if plan_digest(run.id, run.manifest, run.proposed_sha256, run.policy, specification) != run.plan_hash:
         raise ValueError('Validation manifest changed. Prepare a new plan.')
     if specification is not None:
-        if run.policy['profile'] != 'python-unittest' or specification != bind_spec(specification['declaration'], run.snapshot,
+        is_json = specification.get('kind') == 'json-stdio'
+        binder = bind_contract if is_json else bind_spec
+        if run.policy['profile'] != ('python-json-stdio' if is_json else 'python-unittest') or specification != binder(specification['declaration'], run.snapshot,
                 incident.repository_snapshot, specification['reviewer'], specification['reviewed_at']):
             raise ValueError('Verification specification changed. Prepare a new plan.')
+    elif run.policy['profile'] == 'python-json-stdio':
+        raise ValueError('JSON contract is required.')
     if {item['path'] for item in run.manifest} != set(run.snapshot) or len(run.manifest) != len(run.snapshot):
         raise ValueError('Snapshot manifest does not match its files.')
     for item in run.manifest:
@@ -103,7 +108,7 @@ def expire_plans(db):
         db.commit()
 
 
-def prepare_plan(incident, fix, paths, profile='python-unittest', verification_spec=None, reviewer='local developer'):
+def prepare_plan(incident, fix, paths, profile='python-unittest', verification_spec=None, reviewer='local developer', json_contract=None):
     if fix.approval_status != 'pending' or incident.status not in ('awaiting_review', 'partial'):
         raise ValueError('Prepare and run tests before recording the final review decision.')
     if any(protected_test_path(f['path']) for f in fix_files(fix)):
@@ -114,7 +119,7 @@ def prepare_plan(incident, fix, paths, profile='python-unittest', verification_s
     paths = list(dict.fromkeys(paths))
     if any(f['path'] not in paths for f in fix_files(fix)):
         raise ValueError('Include every proposed patch target in the source snapshot.')
-    if not any(p.rsplit('/', 1)[-1].startswith('test') and p.endswith('.py') for p in paths):
+    if profile != 'python-json-stdio' and not any(p.rsplit('/', 1)[-1].startswith('test') and p.endswith('.py') for p in paths):
         raise ValueError('Include at least one test*.py file.')
     snapshot, manifest = {}, []
     for path in paths:
@@ -134,6 +139,10 @@ def prepare_plan(incident, fix, paths, profile='python-unittest', verification_s
     if verification_spec is not None and profile != 'python-unittest':
         raise ValueError('Reviewed verification specifications currently require unittest.')
     specification = bind_spec(verification_spec, snapshot, incident.repository_snapshot, reviewer, now()) if verification_spec is not None else None
+    if (json_contract is not None) != (profile == 'python-json-stdio'):
+        raise ValueError('JSON profile requires a JSON contract.')
+    if json_contract is not None:
+        specification = bind_contract(json_contract, snapshot, incident.repository_snapshot, reviewer, now())
     patch_hash = patch_digest(fix)
     plan_hash = plan_digest(identifier, manifest, patch_hash, policy, specification)
     return ValidationRun(id=identifier, incident_id=incident.id, fix_id=fix.id, status='planned',
@@ -175,16 +184,21 @@ def execute_validation(run_id):
     try:
         if integrity_error:
             raise ValueError('Execution integrity check failed.')
-        before = sandbox.run_snapshot(run_id, 'before', original, policy)
-        if before['status'] == 'error':
-            after = {'status': 'skipped', 'output': '', 'exit_code': None, 'error': 'Baseline runner failed; patched run not started.'}
+        is_json = policy['profile'] == 'python-json-stdio'
+        if is_json:
+            before, after, assessment = execute_contract(run_id, original, proposed, policy, specification, run.expires_at)
         else:
+            before = sandbox.run_snapshot(run_id, 'before', original, policy)
+        if not is_json and before['status'] == 'error':
+            after = {'status': 'skipped', 'output': '', 'exit_code': None, 'error': 'Baseline runner failed; patched run not started.'}
+        elif not is_json:
             after = sandbox.run_snapshot(run_id, 'after', proposed, policy)
         result = {'before': before, 'after': after, 'policy': policy,
                   'proof': fixture_proof(original, proposed, policy, before, after, run.proposed_sha256, run.manifest),
                   'interpretation': 'Isolated process exit status is measured. Repository test output and counts are untrusted evidence, not proof of correctness or coverage.'}
         if specification is not None:
-            assessment = assess_spec(specification, before, after)
+            if not is_json:
+                assessment = assess_spec(specification, before, after)
             result.update(verification_spec=specification, specification_assessment=assessment)
             checks.append({'name': 'Reviewed verification specification',
                 'status': {'matched': 'passed', 'not_reproduced': 'skipped', 'mismatch': 'failed', 'inconclusive': 'error'}[assessment['status']],
@@ -200,6 +214,10 @@ def execute_validation(run_id):
              'detail': 'Original suite exited nonzero; inspect output for the actual cause.' if before['status'] == 'failed' else 'The original failure was not reproduced; inspect the baseline output.'},
             {'name': 'Isolated tests after fix', 'status': after['status'], 'detail': policy['profile'] + '; no network, host mounts, or application credentials.'},
         ])
+        if is_json:
+            checks[-2]['detail'] = 'Controller compared actual program JSON with the reviewed baseline; inspect per-case observations.'
+            checks[-1]['detail'] = 'Controller compared actual program JSON with withheld expected values; inspect per-case observations.'
+            result['interpretation'] = 'Behavioral JSON comparisons are performed by the controller. Per-invocation process exit statuses are retained separately in specification_assessment.cases.'
         if any(c['status'] == 'error' for c in checks):
             status = 'error'
         elif status == 'passed' and any(c['status'] == 'failed' for c in checks):

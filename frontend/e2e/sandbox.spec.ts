@@ -106,3 +106,36 @@ test("wrong reviewed failure expectation blocks a positive repair outcome", asyn
   expect((await (await page.request.get(`/api/incidents/${incident.id}/report`)).json()).validation.isolated.specification_assessment.status).toBe("mismatch");
   await expect(page.getByRole("heading", { name: "Verified repair" })).toHaveCount(0);
 });
+
+test("JSON contract review rejects a program that exits successfully without returning JSON", async ({ page }) => {
+  test.skip(process.env.AUTORCA_E2E_SANDBOX !== "1", "Requires the configured restricted runner.");
+  await page.goto("/investigations/new?sample=1");
+  await expect(page.getByLabel("Incident title")).not.toHaveValue("");
+  await page.getByRole("button", { name: "Start investigation", exact: true }).click();
+  await expect(page.getByText("7 of 7 completed")).toBeVisible();
+  await page.getByRole("link", { name: /Review fix/ }).click();
+  await page.getByLabel("Test framework").selectOption("python-json-stdio");
+  await page.getByLabel("checkout.py", { exact: true }).check();
+  await page.getByLabel("JSON behavior contract", { exact: true }).fill(JSON.stringify({
+    entrypoint: "checkout.py", rationale: "Negative interface check: the module defines functions but returns no JSON.", cases: [
+      { id: "percentage", role: "reproduction", input: { price: 100, discount: 20 }, baseline: 5, expected: 80 },
+      { id: "zero", role: "regression", input: { price: 0, discount: 20 }, baseline: 0, expected: 0 },
+    ],
+  }));
+  await expect(page.getByRole("button", { name: "Prepare isolated test plan" })).toBeDisabled();
+  await page.getByLabel("I reviewed the inputs, known baseline behavior, and expected answers against the incident.").check();
+  await page.getByRole("button", { name: "Prepare isolated test plan" }).click();
+  await expect(page.getByRole("heading", { name: "Reviewed JSON behavior contract" })).toBeVisible();
+  await expect(page.getByText(/4 fresh isolated invocations/)).toBeVisible();
+  await page.getByLabel("I authorize executing these source and test snapshots before and after this patch in the restricted runner.").check();
+  await page.getByRole("button", { name: "Run isolated tests" }).click();
+  await expect(page.getByRole("heading", { name: "Validation failed" })).toBeVisible();
+  const incidentId = page.url().split("/").at(-2);
+  const report = await (await page.request.get(`/api/incidents/${incidentId}/report`)).json();
+  const assessment = report.validation.isolated.specification_assessment;
+  expect(assessment.status).toBe("inconclusive");
+  expect(assessment.cases).toHaveLength(1);
+  expect(assessment.cases[0].before.exit_code).toBe(0);
+  expect(assessment.cases[0].after).toBeUndefined();
+  expect(report.repair_outcome.status).toBe("VALIDATION_FAILED");
+});

@@ -427,7 +427,8 @@ def validation_runs(incident_id: str, db: Session = Depends(get_db)):
 def validation_plan(incident_id: str, body: ValidationPlanRequest, request: Request, db: Session = Depends(get_db)):
     expire_plans(db)
     run = prepare_plan(incident_or_404(db, incident_id), get_fix(db, incident_id), body.files, body.profile,
-        body.verification_spec.model_dump() if body.verification_spec else None, request.state.user['username'])
+        body.verification_spec.model_dump() if body.verification_spec else None, request.state.user['username'],
+        body.json_contract.model_dump() if body.json_contract else None)
     db.add(run)
     db.commit()
     return public_run(run)

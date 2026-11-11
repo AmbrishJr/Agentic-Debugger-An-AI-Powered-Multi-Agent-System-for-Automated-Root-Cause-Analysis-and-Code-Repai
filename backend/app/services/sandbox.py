@@ -59,14 +59,19 @@ def availability():
 
 
 def policy(profile='python-unittest'):
-    if profile not in ('python-unittest', 'python-pytest'):
+    if profile not in ('python-unittest', 'python-pytest', 'python-json-stdio'):
         raise ValueError('Unsupported test profile.')
+    if profile == 'python-json-stdio' and settings.sandbox_provider != 'docker':
+        raise ValueError('JSON contracts currently require the Docker adapter.')
     if settings.sandbox_provider == 'vercel':
         from app.services import vercel_sandbox
         return vercel_sandbox.policy(profile)
+    from app.services.json_contracts import DRIVER
+    command = ['python', '-I', '-B', '-c', DRIVER] if profile == 'python-json-stdio' else ['python', '-I', '-B', '/opt/autorca/bootstrap.py', profile]
     return {'version': 1, 'image': settings.sandbox_image, 'docker_context': settings.sandbox_docker_context,
             'profile': profile,
-            'command': ['python', '-I', '-B', '/opt/autorca/bootstrap.py', profile],
+            'command': command,
+            'output_capture': 'separate-streams-v1',
             'network': 'none', 'user': '65534:65534', 'read_only_root': True,
             'memory_mb': 256, 'cpus': 0.5, 'pids': 32, 'output_limit_bytes': OUTPUT_LIMIT,
             'timeout_seconds': min(120, max(5, settings.sandbox_timeout_seconds)),
@@ -91,7 +96,11 @@ def cleanup(name):
         return False
 
 
-def run_snapshot(run_id: str, phase: str, files: dict, approved_policy: dict) -> dict:
+def run_snapshot(run_id: str, phase: str, files: dict, approved_policy: dict, invocation=None) -> dict:
+    if (invocation is not None) != (approved_policy.get('profile') == 'python-json-stdio'):
+        raise ValueError('JSON invocation and runner profile must match.')
+    if invocation is not None and settings.sandbox_provider != 'docker':
+        raise ValueError('JSON contracts currently require the Docker adapter.')
     if settings.sandbox_provider == 'vercel':
         from app.services import vercel_sandbox
         return vercel_sandbox.run_snapshot(run_id, phase, files, approved_policy)
@@ -109,7 +118,7 @@ def run_snapshot(run_id: str, phase: str, files: dict, approved_policy: dict) ->
             '--tmpfs=/workspace:rw,nosuid,nodev,noexec,size=16m,mode=1777',
             '--tmpfs=/tmp:rw,nosuid,nodev,noexec,size=16m,mode=1777',
             '--entrypoint=/usr/local/bin/python', approved_policy['image'],
-            '-I', '-B', '/opt/autorca/bootstrap.py', approved_policy['profile']]
+            *approved_policy['command'][1:]]
     start = time.monotonic()
     result = {'phase': phase, 'status': 'error', 'exit_code': None, 'output': '', 'container': name,
               'timed_out': False, 'output_limited': False, 'cleanup_succeeded': False}
@@ -120,29 +129,47 @@ def run_snapshot(run_id: str, phase: str, files: dict, approved_policy: dict) ->
             raise ValueError('Docker could not create a restricted container.')
         # Disk-backed stdin avoids a pipe deadlock when tests emit output early.
         with tempfile.TemporaryFile() as payload:
-            payload.write(json.dumps({'files': files}, ensure_ascii=False).encode())
+            body = {'files': files}
+            if invocation is not None:
+                body['invocation'] = invocation
+            payload.write(json.dumps(body, ensure_ascii=False, allow_nan=False).encode())
             payload.seek(0)
             process = subprocess.Popen([shutil.which('docker'), 'start', '--attach', '--interactive', name],
-                stdin=payload, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=docker_env())
-            output = bytearray()
+                stdin=payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=docker_env())
+            streams = {'stdout': bytearray(), 'stderr': bytearray()}
+            total = 0
             with selectors.DefaultSelector() as selector:
-                selector.register(process.stdout, selectors.EVENT_READ)
-                while True:
+                selector.register(process.stdout, selectors.EVENT_READ, 'stdout')
+                selector.register(process.stderr, selectors.EVENT_READ, 'stderr')
+                while selector.get_map():
                     remaining = approved_policy['timeout_seconds'] - (time.monotonic() - start)
                     if remaining <= 0:
                         result['timed_out'] = True
                         break
                     events = selector.select(min(0.2, remaining))
-                    if events:
-                        chunk = os.read(process.stdout.fileno(), 8192)
+                    for key, _ in events:
+                        chunk = os.read(key.fileobj.fileno(), 8192)
                         if not chunk:
-                            break
-                        room = OUTPUT_LIMIT - len(output)
-                        output.extend(chunk[:room])
+                            selector.unregister(key.fileobj)
+                            continue
+                        room = OUTPUT_LIMIT - total
+                        streams[key.data].extend(chunk[:room])
+                        total += min(len(chunk), room)
                         if len(chunk) > room:
                             result['output_limited'] = True
                             break
-                result['output'] = redact(output.decode('utf-8', errors='replace'))
+                    if result['output_limited']:
+                        break
+                # Preserve each stream's byte order; Docker may deliver streams concurrently.
+                result['stderr_present'] = bool(streams['stderr'])
+                output = streams['stderr'] + streams['stdout']
+                try:
+                    decoded = output.decode('utf-8')
+                except UnicodeError:
+                    decoded = output.decode('utf-8', errors='replace')
+                    result['output_decoding_error'] = True
+                result['output'] = redact(decoded)
+                result['output_redacted'] = result['output'] != decoded
             if not result['timed_out'] and not result['output_limited']:
                 process.wait(timeout=max(0.1, approved_policy['timeout_seconds'] - (time.monotonic() - start)))
                 inspected = control(['inspect', '--format', '{{json .State}}', name])
@@ -164,6 +191,7 @@ def run_snapshot(run_id: str, phase: str, files: dict, approved_policy: dict) ->
                 process.kill()
             process.wait(timeout=5)
             process.stdout.close()
+            process.stderr.close()
         result['cleanup_succeeded'] = cleanup(name)
     if not result['cleanup_succeeded']:
         result['status'] = 'error'

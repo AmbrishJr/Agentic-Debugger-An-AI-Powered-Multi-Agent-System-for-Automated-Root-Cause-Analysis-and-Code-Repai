@@ -294,3 +294,5 @@ The eight-case offline comparison without selected-file hints measured Top-3 sou
 ### Reviewed reproduction and regression expectations
 
 Before authorizing isolated unittest execution, reviewers can declare the tests that should fail, their expected exceptions, and the regressions that must pass. The plan freezes those expectations with the existing incident test hashes. Missing tests, unrelated failures and wrong exceptions fail validation even if patched execution exits successfully. Reports preserve the declaration and per-test observations. Matching generic repository output remains unverified; the independent proof boundary is unchanged. See [verification specification instructions](docs/verification-specifications.md).
+
+For Python commands with a JSON interface, reviewers can also choose **JSON behavior contract (Docker)**. The controller keeps expected answers outside the container and compares actual program responses itself. A forged test-success report cannot substitute for the required JSON behavior. This strengthens observations while preserving the generic VERIFIED restriction. See [JSON behavior contracts](docs/json-behavior-contracts.md).

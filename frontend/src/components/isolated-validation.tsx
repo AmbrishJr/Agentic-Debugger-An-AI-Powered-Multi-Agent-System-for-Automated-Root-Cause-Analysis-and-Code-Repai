@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, ErrorBox } from "@/components/common";
 import { useAuth } from "@/components/auth";
 import { specificationInput, VerificationSpecificationSummary } from "@/components/verification-specification";
-import type { BoundVerificationSpecification, SpecificationAssessment } from "@/types";
+import type { BoundJsonContract, BoundVerificationSpecification, SpecificationAssessment } from "@/types";
 
 type Run = {
   id: string;
@@ -22,7 +22,7 @@ type Run = {
     memory_mb: number;
   };
   result: {
-    verification_spec?: BoundVerificationSpecification;
+    verification_spec?: BoundVerificationSpecification | BoundJsonContract;
     specification_assessment?: SpecificationAssessment;
     error?: string;
     before?: {
@@ -66,6 +66,8 @@ export function IsolatedValidation({
   const [reproduction, setReproduction] = useState("");
   const [regressions, setRegressions] = useState("");
   const [rationale, setRationale] = useState("");
+  const [contractText, setContractText] = useState("");
+  const [contractReviewed, setContractReviewed] = useState(false);
   const runner = useQuery({
     queryKey: ["sandbox"],
     queryFn: () => api<{ available: boolean; reason: string }>("/sandbox"),
@@ -90,13 +92,22 @@ export function IsolatedValidation({
     }
   }, [runs.dataUpdatedAt, client, id]);
   const prepare = useMutation({
-    mutationFn: () =>
-      post<Run>(`/incidents/${id}/validation-plans`, {
+    mutationFn: () => {
+      let jsonContract;
+      if (profile === "python-json-stdio") {
+        if (!contractReviewed) throw new Error("Review the JSON contract first.");
+        try { jsonContract = JSON.parse(contractText); } catch { throw new Error("Enter valid JSON for the behavior contract."); }
+        if (!jsonContract || Array.isArray(jsonContract) || typeof jsonContract !== "object") throw new Error("The contract must be a JSON object.");
+        jsonContract = { ...jsonContract, version: 1, reviewed: true };
+      }
+      return post<Run>(`/incidents/${id}/validation-plans`, {
         files: selected,
         profile,
         verification_spec: specEnabled && profile === "python-unittest"
           ? specificationInput(reproduction, regressions, rationale, specReviewed) : undefined,
-      }),
+        json_contract: jsonContract,
+      });
+    },
     onSuccess: (r) => {
       setPlan(r);
       setConsent(false);
@@ -149,8 +160,7 @@ export function IsolatedValidation({
         }
       />
       <p className="fine-print">
-        Run a fixed Python unittest or pytest profile in two fresh isolated environments,
-        before and after the patch. No network, credentials, or host mounts are
+        Run a fixed Python test profile before and after the patch. JSON behavior contracts run each input in a fresh environment for both versions. No network, credentials, or host mounts are
         supplied. Only the selected snapshot is included.
       </p>
       {!runner.data?.available && (
@@ -172,6 +182,7 @@ export function IsolatedValidation({
             >
               <option value="python-unittest">unittest</option>
               <option value="python-pytest">pytest</option>
+              <option value="python-json-stdio">JSON behavior contract (Docker)</option>
             </select>
           </label>
           <details className="file-picker" open={!plan}>
@@ -203,6 +214,17 @@ export function IsolatedValidation({
                 ))}
             </div>
           </details>
+          {!plan && profile === "python-json-stdio" && <div className="hypothesis">
+            <p className="fine-print">Select source files only, including the entrypoint. The program reads one JSON value from stdin and returns one JSON value with no diagnostics. Expected answers remain outside the container.</p>
+            <label htmlFor="json-contract">JSON behavior contract</label>
+            <textarea id="json-contract" rows={12} value={contractText}
+              placeholder={'{"entrypoint":"main.py","rationale":"Explain the incident behavior","cases":[{"id":"bug","role":"reproduction","input":2,"baseline":1,"expected":3},{"id":"zero","role":"regression","input":0,"baseline":0,"expected":0}]}'}
+              onChange={(e) => { setContractText(e.target.value); setContractReviewed(false); }} />
+            <p className="fine-print">Include 2–4 cases with both reproduction and regression roles. Each value is limited to 4 KiB. Matching cases do not independently establish test authorship or qualify generic repairs as VERIFIED.</p>
+            <label className="checkbox-label"><input type="checkbox" checked={contractReviewed} onChange={(e) => setContractReviewed(e.target.checked)} />
+              I reviewed the inputs, known baseline behavior, and expected answers against the incident.
+            </label>
+          </div>}
           {!plan && profile === "python-unittest" && <div className="hypothesis">
             <label className="checkbox-label"><input type="checkbox" checked={specEnabled}
               onChange={(e) => { setSpecEnabled(e.target.checked); setSpecReviewed(false); }} />
@@ -233,7 +255,7 @@ export function IsolatedValidation({
             <Button
               variant="outline"
               className="full-width"
-              disabled={!selected.length || prepare.isPending || (specEnabled && profile === "python-unittest" && !specReviewed)}
+              disabled={!selected.length || prepare.isPending || (specEnabled && profile === "python-unittest" && !specReviewed) || (profile === "python-json-stdio" && !contractReviewed)}
               onClick={() => prepare.mutate()}
             >
               <ShieldCheck size={15} />

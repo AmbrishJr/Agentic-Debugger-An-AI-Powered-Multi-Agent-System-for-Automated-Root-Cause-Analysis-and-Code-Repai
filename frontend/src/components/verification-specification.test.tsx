@@ -28,4 +28,17 @@ describe("reviewed verification specifications", () => {
     const { container } = render(<VerificationSpecificationSummary />);
     expect(container).toBeEmptyDOMElement();
   });
+  it("shows JSON cases and controller observations without claiming generic verification", () => {
+    render(<VerificationSpecificationSummary spec={{ kind: "json-stdio", declaration: {
+      version: 1, reviewed: true, entrypoint: "main.py", rationale: "Reviewed interface behavior", cases: [
+        { id: "bug", role: "reproduction", input: 2, baseline: 1, expected: 3 },
+        { id: "zero", role: "regression", input: 0, baseline: 0, expected: 0 }],
+    }, reviewer: "editor", reviewed_at: "2026-11-11T00:00:00Z", snapshot_id: "snapshot", source_hashes: {}, oracle_version: 1,
+      limitations: "Generic VERIFIED eligibility is unchanged." }} assessment={{ status: "matched", independent_proof: false,
+      reasons: ["Controller compared withheld answers."], limitations: "Generic VERIFIED eligibility is unchanged.",
+      cases: [{ id: "bug", role: "reproduction", before_matches_baseline: true, after_matches_expected: true }] }} />);
+    expect(screen.getByRole("heading", { name: "Contract observations: matched" })).toBeInTheDocument();
+    expect(screen.getByText(/4 fresh isolated invocations/)).toBeInTheDocument();
+    expect(screen.getByText(/eligibility is unchanged/)).toBeInTheDocument();
+  });
 });

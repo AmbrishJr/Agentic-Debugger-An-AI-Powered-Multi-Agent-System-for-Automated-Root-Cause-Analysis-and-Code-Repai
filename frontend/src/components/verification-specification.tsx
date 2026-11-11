@@ -1,4 +1,4 @@
-import type { BoundVerificationSpecification, SpecificationAssessment, VerificationSpecification } from "@/types";
+import type { BoundJsonContract, BoundVerificationSpecification, SpecificationAssessment, VerificationSpecification } from "@/types";
 
 export function specificationInput(reproduction: string, regressions: string, rationale: string, reviewed: boolean): VerificationSpecification {
   if (!reviewed) throw new Error("Review the tests and acknowledge the verification specification first.");
@@ -17,10 +17,22 @@ export function specificationInput(reproduction: string, regressions: string, ra
 }
 
 export function VerificationSpecificationSummary({ spec, assessment }: {
-  spec?: BoundVerificationSpecification;
+  spec?: BoundVerificationSpecification | BoundJsonContract;
   assessment?: SpecificationAssessment;
 }) {
   if (!spec) return null;
+  if (spec.kind === "json-stdio") return <div className="hypothesis">
+    <h4>Reviewed JSON behavior contract</h4>
+    <p>{spec.declaration.rationale}</p>
+    <p className="fine-print">Reviewed by {spec.reviewer} · {spec.declaration.entrypoint} · {spec.declaration.cases.length * 2} fresh isolated invocations</p>
+    {spec.declaration.cases.map((item) => <details key={item.id}><summary>{item.id} · {item.role}</summary>
+      <pre>{JSON.stringify({ input: item.input, baseline: item.baseline, expected: item.expected }, null, 2)}</pre>
+    </details>)}
+    {assessment && <><h4>Contract observations: {assessment.status.replaceAll("_", " ")}</h4>
+      <ul>{assessment.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+      <ul>{assessment.cases?.map((item) => <li key={item.id}>{item.id}: baseline {item.before_matches_baseline === undefined ? "unavailable" : item.before_matches_baseline ? "matched" : "different"}; patched {item.after_matches_expected === undefined ? "unavailable" : item.after_matches_expected ? "matched" : "different"}</li>)}</ul></>}
+    <p className="fine-print">{assessment?.limitations ?? spec.limitations}</p>
+  </div>;
   return <div className="hypothesis">
     <h4>Reviewed verification specification</h4>
     <p>{spec.declaration.rationale}</p>

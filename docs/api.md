@@ -108,3 +108,9 @@ Metadata describes bounded static retrieval, not proof of a root cause. No extra
 The plan's `result.verification_spec` binds the declaration to the incident snapshot and test hashes. It is included in the one-use authorization hash and rechecked before execution. `result.specification_assessment` records `matched`, `not_reproduced`, `mismatch`, or `inconclusive`, per-test observations and `independent_proof: false`. Mismatches and incomplete required observations fail validation; matches do not broaden VERIFIED eligibility. Incident/patch/report responses retain these artifacts through the existing latest-validation fields. Specifications are preserved after interruption and snapshot-body cleanup.
 
 Existing requests without specifications retain their behavior; pytest specifications are rejected while ordinary pytest execution remains supported. See [request example, outcome rules and limits](verification-specifications.md).
+
+## Controller-owned JSON contracts
+
+Validation plans additionally accept `profile: "python-json-stdio"` with a required `json_contract` (mutually exclusive with unittest specifications). The contract contains `version: 1`, `reviewed: true`, `entrypoint`, `rationale`, and 2–4 `{id, role, input, baseline, expected}` cases. Include both reproduction and regression roles; select source-only Python files. This profile currently requires Docker.
+
+The bound artifact uses `result.verification_spec.kind: "json-stdio"`. Its assessment uses `comparison: "controller-json-equality-v1"` and preserves actual process results under `cases[].before/after`. The enclosing before/after fields represent semantic contract comparisons with null exit codes, explicitly labeled `measurement: "contract_comparison"`. Expected values never enter the candidate execution payload. Matches do not broaden VERIFIED eligibility. [Full schema example, comparison rules and limits](json-behavior-contracts.md).

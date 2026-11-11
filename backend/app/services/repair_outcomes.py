@@ -21,7 +21,9 @@ def resolve_outcome(incident, investigation, fix, run=None):
             or after.get('status') in ('failed', 'error') or before.get('status') == 'error'
             or any(p.get('timed_out') or p.get('output_limited') or p.get('cleanup_succeeded') is False for p in (before, after))):
         return outcome('VALIDATION_FAILED', 'A required check or execution integrity check failed; inspect the validation evidence.')
-    if before.get('status') == 'passed' and before.get('exit_code') == 0:
+    if ((before.get('status') == 'passed' and before.get('exit_code') == 0)
+            or (isolated.get('verification_spec', {}).get('kind') == 'json-stdio'
+                and isolated.get('specification_assessment', {}).get('status') == 'not_reproduced')):
         return outcome('NOT_REPRODUCED', 'The permitted baseline tests passed before the patch.')
     proof = isolated.get('proof', {})
     if (fix and run and run.id == run_id and run.fix_id == fix.id and run.incident_id == incident.id

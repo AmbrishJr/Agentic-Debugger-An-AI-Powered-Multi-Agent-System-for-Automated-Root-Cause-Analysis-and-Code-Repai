@@ -44,6 +44,7 @@ export type VerificationSpecification = {
   regressions: string[];
 };
 export type BoundVerificationSpecification = {
+  kind?: "unittest";
   declaration: VerificationSpecification;
   reviewer: string;
   reviewed_at: string;
@@ -52,13 +53,22 @@ export type BoundVerificationSpecification = {
   independence: string;
   limitations: string;
 };
+export type JsonContract = {
+  version: 1; reviewed: true; entrypoint: string; rationale: string;
+  cases: { id: string; role: "reproduction" | "regression"; input: unknown; baseline: unknown; expected: unknown }[];
+};
+export type BoundJsonContract = {
+  kind: "json-stdio"; declaration: JsonContract; reviewer: string; reviewed_at: string;
+  snapshot_id: string; source_hashes: Record<string, string>; oracle_version: number; limitations: string;
+};
 export type SpecificationAssessment = {
   status: "matched" | "not_reproduced" | "mismatch" | "inconclusive";
   independent_proof: false;
   limitations: string;
   reasons: string[];
-  reproduction: { test_id: string; expected_exception: string; observed_match: boolean }[];
-  regressions: { test_id: string; observed_pass: boolean }[];
+  reproduction?: { test_id: string; expected_exception: string; observed_match: boolean }[];
+  regressions?: { test_id: string; observed_pass: boolean }[];
+  cases?: { id: string; role: string; before_matches_baseline?: boolean; after_matches_expected?: boolean }[];
 };
 export type SourceRetrieval = {
   strategy?: "stack" | "symbols";

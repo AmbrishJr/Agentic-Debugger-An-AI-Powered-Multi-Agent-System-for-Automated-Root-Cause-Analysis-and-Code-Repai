@@ -1,6 +1,6 @@
 # Implementation checkpoints
 
-The latest work is recorded under **Fourth upgrade: reviewed reproduction and regression specifications** below. Earlier checkpoints are retained as historical evidence.
+The latest work is recorded under **Fifth upgrade: controller-owned JSON behavior checks** below. Earlier checkpoints are retained as historical evidence.
 
 ## First upgrade checkpoint
 
@@ -228,3 +228,53 @@ Artifacts: [Markdown](../data/evaluations/verification-specs-offline.md), [JSON]
 Reviewing existing tests does not establish independent authorship, causal relevance or trustworthy runtime telemetry. Generic repository code can forge stdout, so even perfectly matching observations remain untrusted. Before broadening VERIFIED, implement a separately trusted oracle/observation channel with independent test provenance and reviewed attribution/regression rules. Version 1 does not support inherited/dynamic tests, altered verbose output, subtest failure formats or pytest specifications. Multi-language retrieval, semantic claim support, calibrated confidence and live/held-out diagnosis evaluation remain open as previously recorded.
 
 See [verification specification operations](verification-specifications.md) for the API, UI workflow, limits and rollback behavior. No external publication was performed.
+
+## Fifth upgrade: controller-owned JSON behavior checks
+
+Implemented a narrow behavioral oracle for Python command-line JSON interfaces. Expected answers stay in the controller, and actual isolated program responses are compared there. This completes the controller-comparison slice; independent test provenance and broader VERIFIED eligibility remain open.
+
+### Delivered
+
+- Optional `python-json-stdio` validation profile with a reviewed JSON contract: entrypoint, rationale and 2–4 reproduction/regression cases. Known incorrect baseline outputs distinguish reproduction from an unrelated failure. Values are bounded to 4 KiB; both test roles and distinct IDs are required.
+- Server-bound reviewer, timestamp, incident snapshot, source hashes and oracle version. The authorization hash covers the contract, full fixed driver command, source manifest, patch and runtime policy. No expected values, case roles, IDs or other cases enter candidate execution.
+- Source-only snapshots run through an application-owned driver in the existing immutable Docker image. Each input/version receives a fresh restricted container. Expiry is checked before each invocation; invalid output, runtime errors or uncertain cleanup stop subsequent invocations. No host fallback, new dependency, image installation or schema migration was added.
+- Strict controller JSON comparisons reject duplicate keys, non-finite/overflowing numbers, multiple values, invalid UTF-8, redacted output and stderr diagnostics. Semantic outcomes are stored separately from actual per-invocation exit codes. A zero-exit program that returns no JSON fails the required contract.
+- Review UI for declarations, maximum invocation count and per-case comparison results. Existing incident, patch and report endpoints retain the same contract and latest assessment. Generic matches remain PATCH_UNVERIFIED; already-correct baselines produce NOT_REPRODUCED; mismatches/inconclusive checks produce VALIDATION_FAILED.
+- Docker stdout and stderr are captured separately with a shared output budget, then rendered in stable stream order. This avoids corrupting unittest records through cross-stream interleaving. JSON contracts require stderr to be empty. The capture policy is authorization-bound, so pending plans created under the prior policy require replanning.
+
+No deployment, external publication, paid provider call or rewrite of historical records occurred. Existing user changes were preserved. This profile is Docker-only; Vercel explicitly rejects it without fallback.
+
+### Executed verification
+
+| Command | Result |
+| --- | --- |
+| `PYTHONPATH=backend backend/.venv/bin/pytest backend/tests/test_sandbox.py backend/tests/test_verification_specs.py backend/tests/test_repair_outcomes.py -q` | **63 passed** after the initial integration. |
+| `PYTHONPATH=backend backend/.venv/bin/pytest backend/tests -q` | **217 passed, 10 skipped**, two existing deprecation warnings. |
+| `cd frontend && npm test` | **20 passed**. |
+| `cd frontend && npm run typecheck` | Passed. |
+| `cd frontend && npm run build` | Passed production build. |
+| `cd frontend && AUTORCA_E2E_SANDBOX=1 npm run test:e2e` | **8 passed** on the final full run. |
+| `backend/.venv/bin/python scripts/validate_json_contract.py --execute` | **5/5 real isolated adapter scenarios passed**, 14 fresh container invocations. |
+| `PYTHONPATH=backend backend/.venv/bin/python scripts/validate_sandbox.py --execute --output data/evaluations/json-contract-sandbox-checks.json` | **15/15 existing isolation/authorization checks passed**, including unittest, pytest, time/output limits, cleanup and resource/security boundaries. |
+| `backend/.venv/bin/python scripts/evaluate.py --output data/evaluations/json-contract-offline` | Eight completed offline demo cases, no provider calls or additional fixture execution. |
+| `git diff --check` | Passed. |
+
+The first full browser run had two failures: a demo approval response timed out even though the stored incident was approved, and the controlled unittest fixture became inconclusive because stdout's summary was interleaved inside stderr's final test line. The output collector was fixed without relaxing the parser/proof checks. The final complete browser rerun passed all eight scenarios, including the unchanged controlled VERIFIED fixture, wrong-exception rejection, and a JSON program that exits zero without returning a value. The final resource/cleanup checks also passed after the collector change.
+
+New backend cases verify contract/schema/source boundaries, absence of oracle answers from invocation payloads, authorization/queued tampering, expiry, cleanup failure, malformed/ambiguous JSON, non-finite values, redaction/decoding/stderr rejection, fixed driver policy, no cloud fallback, shared API/report outcomes, approval without verification, and forged test-report rejection. Mocked runner tests are contract tests, not accuracy measurements.
+
+Ten skips still require unavailable cloud SDKs or disposable PostgreSQL. Live providers, live GitHub indexing and hosted execution were not exercised. The Python deployment-version discrepancy, Starlette/LangGraph deprecations and existing Next standalone/start warning remain. Browser and adapter checks used approved local loopback/Docker access and the already configured immutable image.
+
+### Artifacts and interpretation
+
+- [Real JSON oracle checks](../data/evaluations/json-contract-isolated.json): correct repair → matched; wrong repair → mismatch; already-correct baseline → not_reproduced; stderr masquerading as a response → inconclusive; forged unittest summary → inconclusive. Artifact kind is `isolated_adapter_checks`, explicitly not an accuracy benchmark.
+- [Isolation regression checks](../data/evaluations/json-contract-sandbox-checks.json): existing security/resource/timeout/output/cleanup coverage after the collector change.
+- [Offline benchmark Markdown](../data/evaluations/json-contract-offline.md) and [JSON](../data/evaluations/json-contract-offline.json): Top-1 **5/6**, Top-3 **6/6**, verified repairs **0/6**, no provider calls and **$0** provider cost. This compatibility run retains selected-file hints and does not execute JSON contracts or measure live-model improvement.
+
+Generated artifacts remain under ignored `data/` and can be reproduced with the listed commands. A matching synthetic contract establishes only the tested behavior, not general correctness, independent authorship or model accuracy.
+
+### Remaining work
+
+The oracle now owns comparison and withholds expected answers, but independent provenance of the contract and its causal relevance to the incident are still reviewer-declared. Those guarantees and a reviewed policy for the scope of verification are required before generic repairs can earn VERIFIED. Supported interfaces remain Python CLI JSON on Docker; other languages/frameworks, service/exception contracts and Vercel execution need separate adapters. Semantic citation support, confidence calibration, broader held-out diagnosis cases and explicitly configured live evaluation remain unimplemented or unmeasured.
+
+Operational details, API examples and limitations are in [JSON behavior contracts](json-behavior-contracts.md). Existing unittest/pytest profiles and approval rules remain available; the exact controlled fixture remains the only VERIFIED repair scope.
