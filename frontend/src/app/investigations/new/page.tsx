@@ -19,7 +19,7 @@ import { useAuth } from "@/components/auth";
 
 type Sample = { title: string; error_log: string };
 export default function NewInvestigation() {
-  const { user } = useAuth();
+  const { user, enabled } = useAuth();
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [log, setLog] = useState("");
@@ -27,6 +27,7 @@ export default function NewInvestigation() {
   const [repository, setRepository] = useState("sample");
   const [files, setFiles] = useState<string[]>([]);
   const [autoLoaded, setAutoLoaded] = useState(false);
+  const [registerContract, setRegisterContract] = useState(false);
   const settings = useQuery({
     queryKey: ["settings"],
     queryFn: () => api<Settings>("/settings"),
@@ -67,7 +68,7 @@ export default function NewInvestigation() {
       return incident;
     },
     onSuccess: (incident) =>
-      router.push(`/investigations/${incident.id}?start=1`),
+      router.push(`/investigations/${incident.id}${registerContract ? "" : "?start=1"}`),
   });
   if (user?.role === "viewer")
     return (
@@ -237,6 +238,9 @@ export default function NewInvestigation() {
               </p>
             </div>
           </div>
+          {enabled && <label className="checkbox-label"><input type="checkbox" checked={registerContract} onChange={(e) => setRegisterContract(e.target.checked)} />
+            Save incident first to register a JSON contract for separate-account review
+          </label>}
           <div className="form-footer">
             <span>
               <LockKeyhole size={14} /> Read-only investigation
@@ -246,7 +250,7 @@ export default function NewInvestigation() {
               type="submit"
             >
               <Play size={15} />
-              {submit.isPending ? "Creating incident…" : "Start investigation"}
+              {submit.isPending ? "Creating incident…" : registerContract ? "Save incident for contract review" : "Start investigation"}
               <ArrowRight size={16} />
             </Button>
           </div>

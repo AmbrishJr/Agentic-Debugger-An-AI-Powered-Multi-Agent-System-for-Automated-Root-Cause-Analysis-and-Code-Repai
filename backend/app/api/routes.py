@@ -22,6 +22,8 @@ from app.services.patches import fix_files
 from app.services import llm
 from app.services.repair_outcomes import resolve_outcome
 from app.services.repository_snapshots import capture, StaleSnapshotError
+from app.services import contract_registry
+from app.schemas.contracts import ContractRegistration, ContractReview
 
 router = APIRouter(prefix='/api')
 
@@ -53,7 +55,8 @@ def details(db, incident_id):
     jobs = db.scalars(select(Job).where(Job.incident_id == incident_id).order_by(Job.created_at)).all()
     audit = db.scalars(select(IncidentEvent).where(IncidentEvent.incident_id == incident_id).order_by(IncidentEvent.created_at)).all()
     run_id = fix.validation_result.get('isolated_run_id') if fix else None
-    outcome = resolve_outcome(incident, inv, fix, db.get(ValidationRun, run_id) if run_id else None)
+    run = db.get(ValidationRun, run_id) if run_id else None
+    outcome = resolve_outcome(incident, inv, fix, run, contract_registry.provenance_valid(db, incident, inv, run))
     fix_data = {**serialized(fix), 'repair_outcome': outcome} if fix else None
     return {**serialized(incident), 'repair_outcome': outcome, 'investigation': serialized(inv), 'executions': [serialized(e) for e in executions], 'fix': fix_data,
             'jobs': [serialized(j) for j in jobs], 'audit': [serialized(e) for e in audit]}
@@ -142,13 +145,18 @@ async def incident_detail(incident_id: str, db: Session = Depends(get_db)):
 
 @router.post('/incidents/{incident_id}/investigate', status_code=202)
 async def investigate(incident_id: str, tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    incident_or_404(db, incident_id)
+    serialize_write(db, 'contract:' + incident_id)
+    incident = incident_or_404(db, incident_id)
+    binding = contract_registry.lock_for_investigation(db, incident)
     # Compare-and-swap prevents concurrent starts even with multiple request threads.
     claimed = db.execute(update(Incident).where(Incident.id == incident_id, Incident.status == 'submitted').values(status='investigating', updated_at=now()))
     if claimed.rowcount != 1:
         db.rollback()
         raise HTTPException(409, 'This incident has already started. Submit a new incident to investigate again.')
-    db.add(Investigation(incident_id=incident_id, config=preferences(db)))
+    config = preferences(db)
+    if binding:
+        config = {**config, 'verification_contract': binding}
+    db.add(Investigation(incident_id=incident_id, config=config))
     job = enqueue(db, 'investigation', incident_id, incident_id, tasks)
     db.commit()
     if settings.job_execution == 'vercel':
@@ -423,12 +431,48 @@ def validation_runs(incident_id: str, db: Session = Depends(get_db)):
     return {'items': [public_run(r) for r in rows]}
 
 
+@router.get('/incidents/{incident_id}/verification-contract')
+def registered_contract(incident_id: str, db: Session = Depends(get_db)):
+    registration, review = contract_registry.records(db, incident_or_404(db, incident_id))
+    return {'registration': registration, 'review': review}
+
+
+@router.post('/incidents/{incident_id}/verification-contract', status_code=201)
+def register_contract(incident_id: str, body: ContractRegistration, request: Request, db: Session = Depends(get_db)):
+    serialize_write(db, 'contract:' + incident_id)
+    document = contract_registry.register(db, incident_or_404(db, incident_id), request.state.user, body.contract.model_dump(), body.files)
+    db.commit()
+    return document
+
+
+@router.post('/incidents/{incident_id}/verification-contract/review', status_code=201)
+def review_contract(incident_id: str, body: ContractReview, request: Request, db: Session = Depends(get_db)):
+    serialize_write(db, 'contract:' + incident_id)
+    document = contract_registry.review(db, incident_or_404(db, incident_id), request.state.user, body.registration_sha256, body.rationale)
+    db.commit()
+    return document
+
+
 @router.post('/incidents/{incident_id}/validation-plans', status_code=201)
 def validation_plan(incident_id: str, body: ValidationPlanRequest, request: Request, db: Session = Depends(get_db)):
     expire_plans(db)
-    run = prepare_plan(incident_or_404(db, incident_id), get_fix(db, incident_id), body.files, body.profile,
+    incident = incident_or_404(db, incident_id)
+    declaration = body.json_contract.model_dump() if body.json_contract else None
+    provenance = None
+    if body.registered_contract_sha256:
+        registration, review = contract_registry.records(db, incident)
+        inv = db.scalar(select(Investigation).where(Investigation.incident_id == incident_id))
+        if not registration or not review or registration['sha256'] != body.registered_contract_sha256 or not inv:
+            raise ValueError('Choose the exact reviewed contract registered before investigation.')
+        provenance = inv.config.get('verification_contract')
+        contract_registry.validate_binding(db, incident, inv, {'kind': 'json-stdio', 'declaration': registration['declaration'],
+            'source_hashes': registration['source_hashes'], 'snapshot_id': registration['snapshot_id'], 'provenance': provenance})
+        if set(body.files) != set(registration['source_hashes']):
+            raise ValueError('Registered contract plans require exactly the registered source files.')
+        declaration = registration['declaration']
+    run = prepare_plan(incident, get_fix(db, incident_id), body.files, body.profile,
         body.verification_spec.model_dump() if body.verification_spec else None, request.state.user['username'],
-        body.json_contract.model_dump() if body.json_contract else None)
+        declaration, provenance)
     db.add(run)
     db.commit()
     return public_run(run)
@@ -441,7 +485,7 @@ async def authorize_validation(incident_id: str, run_id: str, body: ValidationAu
     run = db.get(ValidationRun, run_id)
     if not run or run.incident_id != incident_id:
         raise HTTPException(404, 'Validation plan not found.')
-    check_plan(incident, fix, run, body.plan_hash)
+    check_plan(incident, fix, run, body.plan_hash, db)
     ready = sandbox.availability()
     if not ready['available']:
         raise HTTPException(409, ready['reason'])

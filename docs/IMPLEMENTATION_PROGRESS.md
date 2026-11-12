@@ -1,6 +1,6 @@
 # Implementation checkpoints
 
-The latest work is recorded under **Fifth upgrade: controller-owned JSON behavior checks** below. Earlier checkpoints are retained as historical evidence.
+The latest work is recorded under **Sixth upgrade: preregistered contract provenance** below. Earlier checkpoints are retained as historical evidence.
 
 ## First upgrade checkpoint
 
@@ -278,3 +278,43 @@ Generated artifacts remain under ignored `data/` and can be reproduced with the 
 The oracle now owns comparison and withholds expected answers, but independent provenance of the contract and its causal relevance to the incident are still reviewer-declared. Those guarantees and a reviewed policy for the scope of verification are required before generic repairs can earn VERIFIED. Supported interfaces remain Python CLI JSON on Docker; other languages/frameworks, service/exception contracts and Vercel execution need separate adapters. Semantic citation support, confidence calibration, broader held-out diagnosis cases and explicitly configured live evaluation remain unimplemented or unmeasured.
 
 Operational details, API examples and limitations are in [JSON behavior contracts](json-behavior-contracts.md). Existing unittest/pytest profiles and approval rules remain available; the exact controlled fixture remains the only VERIFIED repair scope.
+
+## Sixth upgrade: preregistered contract provenance
+
+Date: 2026-11-12 (Asia/Kolkata). Added immutable contract registration before investigation, review by a different authenticated account, and a narrowly scoped VERIFIED outcome for those registered JSON cases. This extends the fifth checkpoint's proof boundary without promoting old or ad hoc results.
+
+### Delivered
+
+- Registration and review are append-only audit events in existing JSON evidence fields. The server assigns account identity, hashes and timestamps. No schema migration, account changes or historical rewrite is required.
+- Registration, review and investigation startup share a database lock. Contracts cannot be added after investigation or proposal creation; startup waits for a separate account's review. Only references and hashes enter investigation configuration, with expected answers excluded from model evidence.
+- Validation plans reference the exact registration hash and source set. Authorization, worker startup, completion and outcome resolution recheck provenance. The controller rechecks actual saved before/after responses, rather than accepting stored match flags.
+- The new proof scope is `registered-json-contract-v1`. VERIFIED covers only the preregistered reproduction and regression cases under authorized isolation. It does not establish diagnosis causality, correctness for untested inputs, separate human identities behind accounts, or resistance to a privileged database administrator rewriting history.
+- New-incident and investigation screens support saving before analysis, registering a contract and review by another account. The review screen selects the registered contract and still requires separate execution consent. Existing approvals, ad hoc contracts and bundled fixture behavior remain available.
+- A reproducible disposable-database integration script exercises actual registration, review, investigation, plan, authorization, Docker execution, report and approval APIs. Its proposal is a seeded synthetic reference patch, explicitly separated from accuracy measurements.
+
+### Executed verification
+
+| Command | Result |
+| --- | --- |
+| `PYTHONPATH=backend backend/.venv/bin/pytest backend/tests/test_contract_registry.py -q` | **16 passed**, including concurrent registration/startup. |
+| `PYTHONPATH=backend backend/.venv/bin/pytest backend/tests -q` | **233 passed, 10 skipped**, two existing deprecation warnings. |
+| `cd frontend && npm test` | **21 passed**. |
+| `cd frontend && npm run typecheck` | Passed. |
+| `cd frontend && npm run build` | Passed production build. |
+| `cd frontend && AUTORCA_E2E_SANDBOX=1 npm run test:e2e` | **9 passed**, including the new separate-account workflow and existing isolated scenarios. |
+| `backend/.venv/bin/python scripts/validate_contract_provenance.py --execute` | Passed with real isolated reproduction/regression results; four fresh Docker invocations. |
+| `backend/.venv/bin/python scripts/evaluate.py --output data/evaluations/registered-contract-offline` | **8/8 completed** offline demo cases; zero provider calls. |
+| `git diff --check` | Passed. |
+
+New tests cover self-review, role and lifecycle restrictions, duplicate/replayed review, forged actor fields, withheld answers, provenance tampering before authorization/while queued/during execution/after completion, changed stored observations, exact source sets, consistent API/report outcomes and approval preserving the result. Mocked runner tests verify contracts, not model accuracy.
+
+Frontend commands initially aborted inside the execution sandbox with the macOS `SecItemCopyMatching failed -50` runtime error. Approved execution outside that restriction passed unit tests, type checking, production build and all browser workflows. Real Docker checks used the existing pinned image. Ten backend skips still concern unavailable cloud SDKs and disposable PostgreSQL. Live providers, live GitHub indexing and hosted execution were not exercised. Existing Python deployment-version, dependency deprecation and Next standalone/start warnings remain.
+
+### Artifacts and remaining work
+
+- [Isolated integration artifact](../data/evaluations/registered-contract-isolated.json): `status: passed`, scoped VERIFIED, identical detail/patch/report outcomes and unchanged outcome after approval. Explicitly labeled `accuracy_benchmark: false` and `proposal_origin: seeded_synthetic_reference`.
+- [Offline Markdown](../data/evaluations/registered-contract-offline.md) and [JSON](../data/evaluations/registered-contract-offline.json): Top-1 **5/6**, Top-3 **6/6**, citation references **2/2**, exact citations **6/6**, patch application **1/1**, verified repairs **0/6**. RCA accuracy is **0/5**, with scoring coverage **5/6** and one unreviewed diagnosis. Median latency **0.7538 s**, p95 **0.9879 s**, no provider calls and **$0** provider cost. These demo compatibility results do not measure live-model improvement.
+
+Generated artifacts remain under ignored `data/`. No deployment, external publication or paid model request occurred, and `docs/security.md` was not modified.
+
+The new policy supplies account-level provenance and sequencing; human independence and causal attribution remain outside its guarantees. Other languages/interfaces, service and exception contracts, JSON execution on Vercel, semantic citation support, confidence calibration and broader held-out diagnosis evaluation remain open. A live benchmark still requires an explicit provider, model, case limit and usage-budget choice. Operations, trust limits and rollback behavior are documented in [contract provenance](contract-provenance.md).

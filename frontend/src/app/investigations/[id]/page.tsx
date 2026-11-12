@@ -24,6 +24,7 @@ import { Badge, ErrorBox, Loading, ValidationPanel, RepairOutcomePanel, Evidence
 import { date, label } from "@/lib/utils";
 import { Lifecycle } from "@/components/lifecycle";
 import { useAuth } from "@/components/auth";
+import { ContractRegistration } from "@/components/contract-registration";
 
 const agents = [
   ["triage", "Triage", "Understand the failure"],
@@ -116,6 +117,7 @@ export default function Investigation({
       </div>
       <ErrorBox error={error || start.error} />
       <SourceProvenance snapshot={data.repository_snapshot} />
+      <ContractRegistration id={id} status={data.status} />
       {data.mode === "demo" && (
         <div className="inline-notice">
           <FlaskConical size={16} />

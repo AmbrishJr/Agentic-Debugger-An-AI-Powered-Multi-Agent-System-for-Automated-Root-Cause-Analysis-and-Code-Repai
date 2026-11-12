@@ -29,6 +29,8 @@ runpy.run_path(entry,run_name="__main__")
 '''
 LIMITATION = ('The controller compared actual JSON behavior against withheld expected values. '
               'Test authorship and incident relevance remain reviewer-declared; generic VERIFIED eligibility is unchanged.')
+REGISTERED_LIMITATION = ('The contract was registered before investigation and reviewed by a separate authenticated account. '
+                        'Verification is limited to its cases; account separation does not prove separate human identities or correctness of untested behavior.')
 
 
 def canonical(value):
@@ -105,7 +107,7 @@ def execute_contract(run_id, original, proposed, policy, spec, expires_at):
                'mismatch': 'Observed behavior differed from the declared baseline or required repaired/regression behavior.',
                'inconclusive': error}
     assessment = {'status': status, 'comparison': 'controller-json-equality-v1', 'independent_proof': False,
-                  'reasons': [reasons[status]], 'limitations': LIMITATION, 'cases': cases}
+                  'reasons': [reasons[status]], 'limitations': REGISTERED_LIMITATION if spec.get('provenance') else LIMITATION, 'cases': cases}
     # Aggregate semantic checks, separate from each invocation's actual process exit code.
     clean = all(p.get('cleanup_succeeded') is True for c in cases for p in (c.get('before'),c.get('after')) if p)
     before = {'status': 'error' if error else 'passed' if already_passed and not unexpected else 'failed',
@@ -113,3 +115,21 @@ def execute_contract(run_id, original, proposed, policy, spec, expires_at):
     after = {'status': 'error' if error else 'failed' if after_failed else 'passed',
              'exit_code': None, 'cleanup_succeeded': clean, 'output': reasons[status], 'measurement': 'contract_comparison'}
     return before, after, assessment
+
+
+def registered_json_passed(spec, assessment):
+    """Re-evaluate saved observations, never trust a reported match flag alone."""
+    try:
+        if not spec.get('provenance') or assessment.get('comparison') != 'controller-json-equality-v1' or assessment.get('status') != 'matched':
+            return False
+        expected, measured = spec['declaration']['cases'], assessment['cases']
+        if len(expected) != len(measured) or {c['role'] for c in expected} != {'reproduction', 'regression'}:
+            return False
+        for case, observed in zip(expected, measured):
+            if (case['id'] != observed['id'] or case['role'] != observed['role']
+                    or canonical(observe(observed['before'])) != canonical(case['baseline'])
+                    or canonical(observe(observed['after'])) != canonical(case['expected'])):
+                return False
+        return True
+    except (ValueError, TypeError, KeyError, RecursionError):
+        return False

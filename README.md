@@ -269,7 +269,7 @@ Additional integration reports: [real two-file GitHub draft PR](docs/github-mult
 
 ## Measurable repair outcomes and evaluation
 
-Investigation, review and JSON reports now distinguish **VERIFIED**, **PATCH_UNVERIFIED**, **NOT_REPRODUCED**, **VALIDATION_FAILED** and **INSUFFICIENT_EVIDENCE** from workflow completion and approval. The trusted host demo still runs its real tests, but remains unverified for isolated repair purposes. Generic red-to-green test runs do not establish independent proof. Only the exact bundled fixture can currently qualify after authorized isolated verification of immutable tests.
+Investigation, review and JSON reports distinguish **VERIFIED**, **PATCH_UNVERIFIED**, **NOT_REPRODUCED**, **VALIDATION_FAILED** and **INSUFFICIENT_EVIDENCE** from workflow completion and approval. The trusted host demo remains unverified for isolated repair purposes. Generic red-to-green test runs do not establish independent proof. VERIFIED is available for the exact bundled fixture or for a preregistered, separately reviewed JSON contract after its required behavior passes in authorized isolation. Each outcome states its limited scope.
 
 Run the eight-case offline benchmark with:
 
@@ -295,4 +295,6 @@ The eight-case offline comparison without selected-file hints measured Top-3 sou
 
 Before authorizing isolated unittest execution, reviewers can declare the tests that should fail, their expected exceptions, and the regressions that must pass. The plan freezes those expectations with the existing incident test hashes. Missing tests, unrelated failures and wrong exceptions fail validation even if patched execution exits successfully. Reports preserve the declaration and per-test observations. Matching generic repository output remains unverified; the independent proof boundary is unchanged. See [verification specification instructions](docs/verification-specifications.md).
 
-For Python commands with a JSON interface, reviewers can also choose **JSON behavior contract (Docker)**. The controller keeps expected answers outside the container and compares actual program responses itself. A forged test-success report cannot substitute for the required JSON behavior. This strengthens observations while preserving the generic VERIFIED restriction. See [JSON behavior contracts](docs/json-behavior-contracts.md).
+For Python commands with a JSON interface, reviewers can also choose **JSON behavior contract (Docker)**. The controller keeps expected answers outside the container and compares actual program responses itself. A forged test-success report cannot substitute for the required JSON behavior. Ad hoc contracts remain unverified. See [JSON behavior contracts](docs/json-behavior-contracts.md).
+
+To establish provenance before a patch exists, save the incident first, register an immutable JSON contract, and have a different authenticated account review it before investigation starts. A later matching isolated run can earn VERIFIED **for those registered cases only**. This does not prove diagnosis causality or all program behavior. See [contract provenance and scoped verification](docs/contract-provenance.md).

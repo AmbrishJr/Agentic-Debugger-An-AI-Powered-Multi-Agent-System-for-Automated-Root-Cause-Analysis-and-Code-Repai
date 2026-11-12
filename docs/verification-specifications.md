@@ -2,7 +2,7 @@
 
 An isolated test suite can fail for a reason unrelated to an incident. A reviewed verification specification records which tests should reproduce the incident, the exception each should report, and which regressions must pass after the patch. The backend compares those expectations with the before/after observations and keeps the result separate from independent proof.
 
-This feature does **not** broaden VERIFIED eligibility. Generic repository code can forge unittest output. Even a matching specification records `independent_proof: false`; generic proposals remain PATCH_UNVERIFIED when the other checks pass. Only the existing exact application-owned fixture can qualify as VERIFIED under its separate proof gate. Human review of a specification is an attestation, not proof that its author was independent of the patch author.
+Unittest specifications do **not** broaden VERIFIED eligibility. Generic repository code can forge unittest output. Even a matching specification records `independent_proof: false`; generic unittest proposals remain PATCH_UNVERIFIED when the other checks pass. The exact application-owned fixture retains its separate proof gate. JSON interfaces also have a distinct [registered-contract proof policy](contract-provenance.md). Human review of an ad hoc specification is an attestation, not proof that its author was independent of the patch author.
 
 ## Review workflow
 

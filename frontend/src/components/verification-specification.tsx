@@ -25,6 +25,7 @@ export function VerificationSpecificationSummary({ spec, assessment }: {
     <h4>Reviewed JSON behavior contract</h4>
     <p>{spec.declaration.rationale}</p>
     <p className="fine-print">Reviewed by {spec.reviewer} · {spec.declaration.entrypoint} · {spec.declaration.cases.length * 2} fresh isolated invocations</p>
+    {spec.provenance && <p className="fine-print">Registered before investigation with separate-account review · Contract {spec.provenance.registration_sha256.slice(0, 12)}…</p>}
     {spec.declaration.cases.map((item) => <details key={item.id}><summary>{item.id} · {item.role}</summary>
       <pre>{JSON.stringify({ input: item.input, baseline: item.baseline, expected: item.expected }, null, 2)}</pre>
     </details>)}

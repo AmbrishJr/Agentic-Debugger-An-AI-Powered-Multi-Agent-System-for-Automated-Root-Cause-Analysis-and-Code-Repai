@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, ErrorBox } from "@/components/common";
 import { useAuth } from "@/components/auth";
 import { specificationInput, VerificationSpecificationSummary } from "@/components/verification-specification";
-import type { BoundJsonContract, BoundVerificationSpecification, SpecificationAssessment } from "@/types";
+import type { BoundJsonContract, BoundVerificationSpecification, SpecificationAssessment, RegisteredContract } from "@/types";
 
 type Run = {
   id: string;
@@ -68,6 +68,8 @@ export function IsolatedValidation({
   const [rationale, setRationale] = useState("");
   const [contractText, setContractText] = useState("");
   const [contractReviewed, setContractReviewed] = useState(false);
+  const [useRegistered, setUseRegistered] = useState(false);
+  const registry = useQuery({ queryKey: ["contract-registration", id], queryFn: () => api<RegisteredContract>(`/incidents/${id}/verification-contract`) });
   const runner = useQuery({
     queryKey: ["sandbox"],
     queryFn: () => api<{ available: boolean; reason: string }>("/sandbox"),
@@ -94,7 +96,7 @@ export function IsolatedValidation({
   const prepare = useMutation({
     mutationFn: () => {
       let jsonContract;
-      if (profile === "python-json-stdio") {
+      if (profile === "python-json-stdio" && !useRegistered) {
         if (!contractReviewed) throw new Error("Review the JSON contract first.");
         try { jsonContract = JSON.parse(contractText); } catch { throw new Error("Enter valid JSON for the behavior contract."); }
         if (!jsonContract || Array.isArray(jsonContract) || typeof jsonContract !== "object") throw new Error("The contract must be a JSON object.");
@@ -106,6 +108,7 @@ export function IsolatedValidation({
         verification_spec: specEnabled && profile === "python-unittest"
           ? specificationInput(reproduction, regressions, rationale, specReviewed) : undefined,
         json_contract: jsonContract,
+        registered_contract_sha256: profile === "python-json-stdio" && useRegistered ? registry.data?.registration?.sha256 : undefined,
       });
     },
     onSuccess: (r) => {
@@ -176,6 +179,7 @@ export function IsolatedValidation({
               value={profile}
               onChange={(e) => {
                 setProfile(e.target.value);
+                setUseRegistered(false);
                 setPlan(null);
                 setConsent(false);
               }}
@@ -198,7 +202,7 @@ export function IsolatedValidation({
                       type="checkbox"
                       checked={selected.includes(path)}
                       disabled={
-                        !!plan ||
+                        !!plan || useRegistered ||
                         (!selected.includes(path) && selected.length >= 32)
                       }
                       onChange={(e) =>
@@ -214,7 +218,12 @@ export function IsolatedValidation({
                 ))}
             </div>
           </details>
-          {!plan && profile === "python-json-stdio" && <div className="hypothesis">
+          {!plan && profile === "python-json-stdio" && registry.data?.review && registry.data.registration && <label className="checkbox-label"><input type="checkbox" checked={useRegistered}
+            onChange={(e) => { setUseRegistered(e.target.checked); if (e.target.checked) setSelected(Object.keys(registry.data!.registration!.source_hashes)); }} />
+            Use the immutable contract reviewed before investigation
+          </label>}
+          {!plan && profile === "python-json-stdio" && useRegistered && <p className="fine-print">The registered source files and answers are fixed. Prepare the plan to inspect them before separately authorizing execution.</p>}
+          {!plan && profile === "python-json-stdio" && !useRegistered && <div className="hypothesis">
             <p className="fine-print">Select source files only, including the entrypoint. The program reads one JSON value from stdin and returns one JSON value with no diagnostics. Expected answers remain outside the container.</p>
             <label htmlFor="json-contract">JSON behavior contract</label>
             <textarea id="json-contract" rows={12} value={contractText}
@@ -255,7 +264,7 @@ export function IsolatedValidation({
             <Button
               variant="outline"
               className="full-width"
-              disabled={!selected.length || prepare.isPending || (specEnabled && profile === "python-unittest" && !specReviewed) || (profile === "python-json-stdio" && !contractReviewed)}
+              disabled={!selected.length || prepare.isPending || (specEnabled && profile === "python-unittest" && !specReviewed) || (profile === "python-json-stdio" && !useRegistered && !contractReviewed)}
               onClick={() => prepare.mutate()}
             >
               <ShieldCheck size={15} />

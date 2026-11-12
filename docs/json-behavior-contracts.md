@@ -4,7 +4,7 @@ The `python-json-stdio` profile checks a Python command-line interface using a c
 
 The response is the behavior under test, not a claim that a test passed. Printing a unittest summary or a forged success report does not satisfy a numeric/string/object contract. Returning the required value for a supplied input does satisfy that case, even if the implementation is overfitted; finite tests cannot establish correctness for all inputs.
 
-Generic VERIFIED eligibility is unchanged. Authorship, independence and incident relevance of user-supplied contracts still require stronger provenance and attribution policy. This feature addresses trusted comparison, not all requirements for independent repair proof.
+Ad hoc JSON contracts do not grant VERIFIED. A separate [registered-contract workflow](contract-provenance.md) can establish account-level provenance before investigation and qualify a matching isolated run for verification of those registered cases only. Comparison alone does not establish independent repair proof or diagnosis causality.
 
 ## Using the review page
 
@@ -63,7 +63,7 @@ The host controller accepts observations only after exit zero, complete output a
 | `mismatch` | Unexpected baseline behavior, partial reproduction across declared cases, wrong patched results or a regression failure |
 | `inconclusive` | Invalid/absent JSON, nonzero process exit, resource/output failure, expired authorization or uncertain cleanup |
 
-Mismatch/inconclusive required checks produce VALIDATION_FAILED. Not-reproduced produces NOT_REPRODUCED unless another explicit check fails. A matching generic contract remains PATCH_UNVERIFIED. The assessment always has `independent_proof: false` and `comparison: "controller-json-equality-v1"`.
+Mismatch/inconclusive required checks produce VALIDATION_FAILED. Not-reproduced produces NOT_REPRODUCED unless another explicit check fails. A matching ad hoc contract remains PATCH_UNVERIFIED. The assessment always has `independent_proof: false` and `comparison: "controller-json-equality-v1"`: the resolver must additionally validate immutable pre-investigation provenance, authorization and integrity before a registered contract can qualify.
 
 `specification_assessment.cases` retains each actual before/after process result and comparison booleans. The enclosing before/after objects describe aggregate **semantic contract checks**, with `measurement: "contract_comparison"` and null exit codes. A wrong baseline JSON value can therefore reproduce the incident while the actual process exits zero; the artifact never invents a nonzero process exit. Reports and incident/patch responses preserve the same latest artifacts.
 
@@ -79,4 +79,4 @@ backend/.venv/bin/python scripts/validate_json_contract.py --execute
 
 The command makes no provider calls, installs nothing and writes an ignored JSON artifact at `data/evaluations/json-contract-isolated.json`. It checks correct repair, wrong repair, already-correct baseline, stderr masquerading as a response, and forged test output. Missing isolation is recorded as skipped. These adapter checks are kept separate from accuracy benchmark results. Normal backend tests mock execution and do not execute repository code on the host.
 
-Remaining limits: Python CLI JSON interfaces only; no exception-output, network-service, interactive or arbitrary framework contract. Comparisons do not authenticate test authorship, establish semantic causal relevance, prevent test overfitting, or measure live-model diagnosis accuracy. Independent contract provenance and reviewed scope/attribution policy are required before widening VERIFIED.
+Remaining limits: Python CLI JSON interfaces only; no exception-output, network-service, interactive or arbitrary framework contract. Comparisons do not authenticate test authorship, establish semantic causal relevance, prevent test overfitting, or measure live-model diagnosis accuracy. The registered-contract policy establishes separate-account sequencing; it cannot prove separate human identities or rule out collusion.

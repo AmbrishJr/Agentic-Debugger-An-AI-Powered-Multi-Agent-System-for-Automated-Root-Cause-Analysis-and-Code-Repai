@@ -188,14 +188,28 @@ class ValidationPlanRequest(StrictModel):
     profile: Literal['python-unittest', 'python-pytest', 'python-json-stdio'] = 'python-unittest'
     verification_spec: VerificationSpecification | None = None
     json_contract: JsonContract | None = None
+    registered_contract_sha256: str | None = Field(default=None, pattern=r'^[a-f0-9]{64}$')
 
     @model_validator(mode='after')
     def specification_profile(self):
         if self.verification_spec and self.profile != 'python-unittest':
             raise ValueError('Reviewed verification specifications currently require unittest.')
-        if (self.json_contract is not None) != (self.profile == 'python-json-stdio'):
+        if self.json_contract is not None and self.registered_contract_sha256 is not None:
+            raise ValueError('Choose either an ad hoc contract or an immutable registered contract.')
+        if (self.json_contract is not None or self.registered_contract_sha256 is not None) != (self.profile == 'python-json-stdio'):
             raise ValueError('The JSON profile requires a JSON contract, and other profiles cannot use one.')
         return self
+
+
+class ContractRegistration(StrictModel):
+    files: list[str] = Field(min_length=1, max_length=32)
+    contract: JsonContract
+
+
+class ContractReview(StrictModel):
+    registration_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+    reviewed: Literal[True]
+    rationale: str = Field(min_length=10, max_length=1000)
 
 
 class ValidationAuthorization(StrictModel):

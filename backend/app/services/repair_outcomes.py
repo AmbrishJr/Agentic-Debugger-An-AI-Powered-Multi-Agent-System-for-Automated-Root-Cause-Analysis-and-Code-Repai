@@ -1,9 +1,10 @@
 """Conservative repair conclusions, independent of workflow and human approval."""
-from app.services.validation_runs import patch_digest
+from app.services.validation_runs import patch_digest, plan_digest
+from app.services.json_contracts import registered_json_passed
 from app.schemas.contracts import RepairOutcome
 
 
-def resolve_outcome(incident, investigation, fix, run=None):
+def resolve_outcome(incident, investigation, fix, run=None, registered_provenance_valid=False):
     results = investigation.analysis_results if investigation else {}
     validation = fix.validation_result if fix else results.get('validation', {})
     state = validation.get('status')
@@ -16,6 +17,8 @@ def resolve_outcome(incident, investigation, fix, run=None):
     if state in ('running', 'regenerate'):
         return outcome('PATCH_UNVERIFIED', 'Validation is running or the proposal is being regenerated.') if fix else None
     isolated = validation.get('isolated', {})
+    if isolated.get('verification_spec', {}).get('provenance') and not registered_provenance_valid:
+        return outcome('VALIDATION_FAILED', 'Registered contract provenance is missing or inconsistent; its verification cannot be trusted.')
     before, after = isolated.get('before', {}), isolated.get('after', {})
     if (state in ('failed', 'error') or any(c.get('status') in ('failed', 'error') for c in validation.get('checks', []))
             or after.get('status') in ('failed', 'error') or before.get('status') == 'error'
@@ -26,6 +29,16 @@ def resolve_outcome(incident, investigation, fix, run=None):
                 and isolated.get('specification_assessment', {}).get('status') == 'not_reproduced')):
         return outcome('NOT_REPRODUCED', 'The permitted baseline tests passed before the patch.')
     proof = isolated.get('proof', {})
+    spec = isolated.get('verification_spec', {})
+    if (registered_provenance_valid and fix and run and run.id == run_id and run.fix_id == fix.id and run.incident_id == incident.id
+            and run.status == 'completed' and run.authorized_at and run.result == isolated and state == 'passed'
+            and run.proposed_sha256 == patch_digest(fix)
+            and plan_digest(run.id, run.manifest, run.proposed_sha256, run.policy, spec) == run.plan_hash
+            and proof.get('version') == 2 and proof.get('scope') == 'registered-json-contract-v1'
+            and proof.get('registration_sha256') == spec.get('provenance', {}).get('registration_sha256')
+            and proof.get('patch_sha256') == run.proposed_sha256
+            and registered_json_passed(spec, isolated.get('specification_assessment', {}))):
+        return outcome('VERIFIED', 'The preregistered JSON contract was reviewed by a separate authenticated account before investigation. Its expected failure and required regressions passed in authorized isolation. Scope: registered contract cases only; untested behavior and diagnosis causality are not verified.')
     if (fix and run and run.id == run_id and run.fix_id == fix.id and run.incident_id == incident.id
             and run.status == 'completed' and run.authorized_at and run.result == isolated
             and run.proposed_sha256 == patch_digest(fix) and state == 'passed'

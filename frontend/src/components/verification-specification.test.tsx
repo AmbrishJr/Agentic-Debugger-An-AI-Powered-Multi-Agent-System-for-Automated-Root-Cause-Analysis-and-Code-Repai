@@ -41,4 +41,13 @@ describe("reviewed verification specifications", () => {
     expect(screen.getByText(/4 fresh isolated invocations/)).toBeInTheDocument();
     expect(screen.getByText(/eligibility is unchanged/)).toBeInTheDocument();
   });
+  it("identifies preregistered provenance separately from the current execution reviewer", () => {
+    render(<VerificationSpecificationSummary spec={{ kind: "json-stdio", declaration: {
+      version: 1, reviewed: true, entrypoint: "main.py", rationale: "Frozen before investigation", cases: [],
+    }, reviewer: "execution-reviewer", reviewed_at: "2026-11-12T00:00:00Z", snapshot_id: "snapshot", source_hashes: {}, oracle_version: 1,
+      limitations: "Verification covers registered cases only.", provenance: { policy: "two-account-preregistration-v1",
+        registration_id: "registration", registration_sha256: "abc123", review_id: "review", review_sha256: "def456", locked_at: "2026-11-12T00:00:00Z" } }} />);
+    expect(screen.getByText(/Registered before investigation with separate-account review/)).toBeInTheDocument();
+    expect(screen.getByText(/registered cases only/)).toBeInTheDocument();
+  });
 });

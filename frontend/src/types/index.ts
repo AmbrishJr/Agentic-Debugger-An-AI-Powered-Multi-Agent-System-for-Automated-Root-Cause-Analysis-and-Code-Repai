@@ -60,6 +60,12 @@ export type JsonContract = {
 export type BoundJsonContract = {
   kind: "json-stdio"; declaration: JsonContract; reviewer: string; reviewed_at: string;
   snapshot_id: string; source_hashes: Record<string, string>; oracle_version: number; limitations: string;
+  provenance?: { policy: string; registration_id: string; registration_sha256: string; review_id: string; review_sha256: string; locked_at: string };
+};
+export type RegisteredContract = {
+  registration: { id: string; sha256: string; actor: { id: string; username: string }; created_at: string;
+    source_hashes: Record<string, string>; declaration: JsonContract } | null;
+  review: { id: string; sha256: string; actor: { id: string; username: string }; created_at: string; rationale: string } | null;
 };
 export type SpecificationAssessment = {
   status: "matched" | "not_reproduced" | "mismatch" | "inconclusive";

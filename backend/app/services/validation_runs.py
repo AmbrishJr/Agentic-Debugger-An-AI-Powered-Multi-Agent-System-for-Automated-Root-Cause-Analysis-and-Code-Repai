@@ -3,13 +3,14 @@ from pathlib import PurePosixPath
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from app.db.session import SessionLocal
-from app.models.records import Incident, ProposedFix, ValidationRun, now, uid
+from app.models.records import Incident, Investigation, ProposedFix, ValidationRun, now, uid
 from app.services.security import read_source, digest, redact, incident_source
 from app.services import sandbox
 from app.services.patches import fix_files
 from app.services.sample import BUGGY, FIXED, REGRESSION_TEST
 from app.services.verification_specs import bind_spec, assess_spec
-from app.services.json_contracts import bind_contract, execute_contract
+from app.services.json_contracts import bind_contract, execute_contract, registered_json_passed, REGISTERED_LIMITATION
+from app.services import contract_registry
 
 
 def patch_digest(fix):
@@ -37,7 +38,7 @@ def plan_digest(run_id, manifest, patch_hash, policy, specification=None):
     return digest(json.dumps(value, sort_keys=True))
 
 
-def check_integrity(incident, fix, run):
+def check_integrity(incident, fix, run, db=None):
     if run.policy != sandbox.policy(run.policy['profile']) or patch_digest(fix) != run.proposed_sha256:
         raise ValueError('Runner policy or proposed code changed. Prepare a new plan.')
     specification = run.result.get('verification_spec')
@@ -46,8 +47,14 @@ def check_integrity(incident, fix, run):
     if specification is not None:
         is_json = specification.get('kind') == 'json-stdio'
         binder = bind_contract if is_json else bind_spec
-        if run.policy['profile'] != ('python-json-stdio' if is_json else 'python-unittest') or specification != binder(specification['declaration'], run.snapshot,
-                incident.repository_snapshot, specification['reviewer'], specification['reviewed_at']):
+        expected = binder(specification['declaration'], run.snapshot, incident.repository_snapshot, specification['reviewer'], specification['reviewed_at'])
+        if specification.get('provenance'):
+            inv = db.scalar(select(Investigation).where(Investigation.incident_id == incident.id)) if db else None
+            if not db or not contract_registry.provenance_valid(db, incident, inv, run):
+                raise ValueError('Registered contract provenance is invalid.')
+            expected['provenance'] = specification['provenance']
+            expected['limitations'] = REGISTERED_LIMITATION
+        if run.policy['profile'] != ('python-json-stdio' if is_json else 'python-unittest') or specification != expected:
             raise ValueError('Verification specification changed. Prepare a new plan.')
     elif run.policy['profile'] == 'python-json-stdio':
         raise ValueError('JSON contract is required.')
@@ -108,7 +115,7 @@ def expire_plans(db):
         db.commit()
 
 
-def prepare_plan(incident, fix, paths, profile='python-unittest', verification_spec=None, reviewer='local developer', json_contract=None):
+def prepare_plan(incident, fix, paths, profile='python-unittest', verification_spec=None, reviewer='local developer', json_contract=None, provenance=None):
     if fix.approval_status != 'pending' or incident.status not in ('awaiting_review', 'partial'):
         raise ValueError('Prepare and run tests before recording the final review decision.')
     if any(protected_test_path(f['path']) for f in fix_files(fix)):
@@ -143,6 +150,9 @@ def prepare_plan(incident, fix, paths, profile='python-unittest', verification_s
         raise ValueError('JSON profile requires a JSON contract.')
     if json_contract is not None:
         specification = bind_contract(json_contract, snapshot, incident.repository_snapshot, reviewer, now())
+        if provenance:
+            specification['provenance'] = provenance
+            specification['limitations'] = REGISTERED_LIMITATION
     patch_hash = patch_digest(fix)
     plan_hash = plan_digest(identifier, manifest, patch_hash, policy, specification)
     return ValidationRun(id=identifier, incident_id=incident.id, fix_id=fix.id, status='planned',
@@ -151,14 +161,14 @@ def prepare_plan(incident, fix, paths, profile='python-unittest', verification_s
         result={'verification_spec': specification} if specification is not None else {})
 
 
-def check_plan(incident, fix, run, expected_hash):
+def check_plan(incident, fix, run, expected_hash, db=None):
     if run.status != 'planned' or run.plan_hash != expected_hash:
         raise ValueError('Validation plan was already used or does not match the reviewed plan.')
     if datetime.fromisoformat(run.expires_at) < datetime.now(timezone.utc):
         raise ValueError('Authorization plan expired. Prepare a new snapshot.')
     if fix.approval_status != 'pending' or incident.status not in ('awaiting_review', 'partial'):
         raise ValueError('Tests must be authorized before the final review decision.')
-    check_integrity(incident, fix, run)
+    check_integrity(incident, fix, run, db)
 
 
 def execute_validation(run_id):
@@ -172,7 +182,7 @@ def execute_validation(run_id):
         try:
             if datetime.fromisoformat(run.expires_at) < datetime.now(timezone.utc):
                 raise ValueError('Authorization expired before execution.')
-            check_integrity(incident, fix, run)
+            check_integrity(incident, fix, run, db)
         except (ValueError, KeyError, TypeError):
             integrity_error = True
         original, proposed = dict(run.snapshot), dict(run.snapshot)
@@ -200,6 +210,10 @@ def execute_validation(run_id):
             if not is_json:
                 assessment = assess_spec(specification, before, after)
             result.update(verification_spec=specification, specification_assessment=assessment)
+            if is_json and specification.get('provenance') and registered_json_passed(specification, assessment):
+                result['proof'] = {'version': 2, 'scope': 'registered-json-contract-v1',
+                    'registration_sha256': specification['provenance']['registration_sha256'], 'patch_sha256': run.proposed_sha256,
+                    'limitations': 'Verified for the preregistered JSON cases only. This does not establish diagnosis causality or correctness for untested inputs.'}
             checks.append({'name': 'Reviewed verification specification',
                 'status': {'matched': 'passed', 'not_reproduced': 'skipped', 'mismatch': 'failed', 'inconclusive': 'error'}[assessment['status']],
                 'detail': ' '.join(assessment['reasons']) + ' ' + assessment['limitations']})
@@ -232,9 +246,12 @@ def execute_validation(run_id):
             result['verification_spec'] = specification
     with SessionLocal() as db:
         run, fix = db.get(ValidationRun, run_id), db.get(ProposedFix, run.fix_id)
+        incident = db.get(Incident, run.incident_id)
+        inv = db.scalar(select(Investigation).where(Investigation.incident_id == run.incident_id))
         if (patch_digest(fix) != run.proposed_sha256
                 or plan_digest(run.id, run.manifest, run.proposed_sha256, run.policy, run.result.get('verification_spec')) != run.plan_hash
-                or run.result.get('verification_spec') != specification):
+                or run.result.get('verification_spec') != specification
+                or (specification and specification.get('provenance') and not contract_registry.provenance_valid(db, incident, inv, run))):
             state, status = 'error', 'error'
             result['error'] = 'Patch or authorized plan changed during validation; proof discarded.'
             result.pop('proof', None)
