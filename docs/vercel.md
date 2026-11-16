@@ -52,6 +52,14 @@ backend/.venv-cloud/bin/python scripts/migrate_cloud.py --target-env .env.vercel
 
 Without `--execute`, this script only checks its inputs. It opens the SQLite source read-only, refuses an occupied PostgreSQL target, and copies records in one transaction. Existing account password hashes and roles are preserved. Sessions and login throttles are not copied; sign in again. Planned test authorizations expire and snapshot bodies are removed. Active jobs and unconfirmed sandbox cleanup block a copy. The original database remains intact.
 
+The source-snapshot upgrade requires migration `005`, which adds `incidents.repository_snapshot` with an empty JSON default for historical records. Deploying the upgraded backend against revision `004` causes incident creation and dashboard queries to return HTTP 500. Earlier releases checked connectivity only, so `/api/health` could still return 200 in this state. This release checks migration revisions and mapped table/column readability, returning HTTP 503 with a sanitized `database_not_ready` error on failure. Health responses are not cached. This is a readiness signal, not an automatic traffic block or migration. Confirm the schema before release with the read-only command:
+
+```bash
+backend/.venv-cloud/bin/python scripts/check_cloud.py --target-env .env.vercel
+```
+
+The command exits nonzero when the database is unavailable, its migration revisions differ from this release, or a mapped table/column cannot be read. It never applies migrations or copies records. Neither this command nor health checks validate indexes, constraints, record correctness, provider reachability or the full hosted workflow. Health's `live_available` describes configured credentials only. Use the target environment's connection file for each Preview/Production check. For an existing workspace migration, omit `--source`; do not repeat the account/history transfer. Production was repaired from `004` to `005` with explicit user approval on 2026-11-12; see [implementation progress](IMPLEMENTATION_PROGRESS.md).
+
 Historical local-repository incidents remain readable, but their laptop source paths are unavailable in the cloud. Start a new incident with the GitHub source before new source checks or publishing. For a genuinely new empty workspace, run the existing `app.manage create-admin` operator command locally with the cloud `DATABASE_URL` configured; there is no public administrator-creation endpoint.
 
 ## Investigations and repository source

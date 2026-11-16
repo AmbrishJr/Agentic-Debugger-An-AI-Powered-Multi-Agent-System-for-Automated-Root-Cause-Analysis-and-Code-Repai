@@ -16,7 +16,7 @@ FastAPI exposes OpenAPI at `/openapi.json` and interactive docs at `/docs`. JSON
 | POST | `/api/incidents/{id}/reject` | Immutable decision; accepts optional note |
 | POST | `/api/incidents/{id}/pull-request` | Requires approved patch and `{"authorized":true}` |
 | GET | `/api/dashboard/stats` | Aggregated stored records, recent incidents, activity |
-| GET | `/api/health` | Database connectivity and live-provider availability |
+| GET | `/api/health` | Release/schema readiness and configured live-provider availability; HTTP 503 when database readiness fails |
 | GET | `/api/samples` | Labeled bundled deterministic example |
 | GET | `/api/repositories` | Available source identifiers; no arbitrary browser-supplied root |
 | GET | `/api/repositories/{source}/files` | Bounded allowlisted files |

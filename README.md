@@ -223,6 +223,14 @@ npm run test:e2e
 
 Run `npm run build` before Playwright. It uses dedicated ports 18000 (FastAPI) and 13000 (Next.js production server), plus a separate database under `frontend/test-results/`, and refuses to reuse existing servers. Tests exercise submission, reports, diffs, approval/rejection persistence, history, settings, and mobile layout. `AUTORCA_E2E_SANDBOX=1 npm run test:e2e` additionally exercises real isolated tests through the UI when Docker is configured. Standard tests do not call OpenAI or GitHub. See [verification notes](docs/verification.md).
 
+For backend coverage with PostgreSQL and the cloud SDKs, use a Python 3.12/3.13 environment with the backend dependencies and pytest installed:
+
+```bash
+backend/.venv-cloud/bin/python scripts/test_cloud.py --docker-context colima-autorca
+```
+
+Use your own local Docker context, or omit the option to use the current context. The runner requires an already-installed `postgres:17-alpine` image and never pulls images. It creates a uniquely named database container with a generated password, loopback-only port and temporary storage, runs the backend suite, then removes its container and volumes even if tests fail. It rejects remote Docker endpoints and never uses the hosted database. Run the separate read-only [release readiness check](docs/vercel.md) before deploying to each cloud environment.
+
 To reproduce the deliberately failing sample independently:
 
 ```bash

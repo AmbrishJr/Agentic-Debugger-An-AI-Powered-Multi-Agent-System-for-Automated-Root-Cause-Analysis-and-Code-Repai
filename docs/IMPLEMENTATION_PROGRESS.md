@@ -1,6 +1,6 @@
 # Implementation checkpoints
 
-The latest work is recorded under **Sixth upgrade: preregistered contract provenance** below. Earlier checkpoints are retained as historical evidence.
+The latest work is recorded under **Seventh upgrade: database readiness and reproducible cloud tests** below. Earlier checkpoints are retained as historical evidence.
 
 ## First upgrade checkpoint
 
@@ -318,3 +318,39 @@ Frontend commands initially aborted inside the execution sandbox with the macOS 
 Generated artifacts remain under ignored `data/`. No deployment, external publication or paid model request occurred, and `docs/security.md` was not modified.
 
 The new policy supplies account-level provenance and sequencing; human independence and causal attribution remain outside its guarantees. Other languages/interfaces, service and exception contracts, JSON execution on Vercel, semantic citation support, confidence calibration and broader held-out diagnosis evaluation remain open. A live benchmark still requires an explicit provider, model, case limit and usage-budget choice. Operations, trust limits and rollback behavior are documented in [contract provenance](contract-provenance.md).
+
+## Production repair: missing source-snapshot migration
+
+Date: 2026-11-12 (Asia/Kolkata). The user reported the generic server error on the hosted new-investigation form. Production logs for deployment `dpl_4JJrp68TtssqtcTY8QZGGgrfvmi9` contained `UndefinedColumn` for `incidents.repository_snapshot`. A read-only database check confirmed revision `004` and the absent column. A disposable local reproduction returned health 200 and incident creation 500 at `004`; creation succeeded after upgrading to `005`.
+
+After explicit user approval, applied the existing migration with `backend/.venv-cloud/bin/python scripts/migrate_cloud.py --target-env .vercel/deployment/migration-production.env --execute`. Used the existing production migration configuration; no production environment download was performed. Migration `005` adds the JSON column with an empty default and does not delete accounts or incident records. No application deployment, provider call or benchmark run occurred.
+
+Post-repair checks confirmed revision `005` and the snapshot column. The application's incident creation and detail functions succeeded against production PostgreSQL inside an outer transaction that was rolled back; the diagnostic incident's absence was verified afterward. The hosted frontend's `/api/health` returned HTTP 200. This verifies the database-backed application path and public health endpoint, not an authenticated browser submission or hosted investigation execution. No test incident was retained. The broader cloud SDK/PostgreSQL test-suite skips recorded above remain separate from this targeted production check.
+
+## Seventh upgrade: database readiness and reproducible cloud tests
+
+Date: 2026-11-16 (Asia/Kolkata). Addressed the false-positive health response that allowed the earlier missing-migration failure to go unnoticed, and made the cloud dependency/PostgreSQL regression suite reproducible.
+
+- `/api/health` now requires this release's Alembic heads and resolves every mapped table/column using zero-row probes. A stale, future, unstamped, incomplete or unavailable database returns a sanitized HTTP 503. Healthy responses preserve existing fields and add `schema_ready: true`; responses are not cached. This checks schema readability, not indexes, constraints, application data or external provider reachability, and does not automatically block other routes or run migrations.
+- `scripts/check_cloud.py --target-env <ignored-file>` performs the same read-only check before deployment. It returns a nonzero exit status on failure without printing database URLs or driver exceptions.
+- `scripts/test_cloud.py` runs the backend suite in a uniquely named local PostgreSQL container, using temporary storage, loopback-only access, a generated password and automatic cleanup. It requires the existing `postgres:17-alpine` image, refuses remote Docker contexts and does not pull images or use the hosted database. Lifecycle tests cover successful/failed test runs, uncertain launch, cleanup failure and remote-context rejection.
+- The PostgreSQL run exposed an old PR-recovery test that changed a bundled incident into an unpinned GitHub incident. The test now seeds an explicitly synthetic reviewed proposal against a captured local source and exercises recovery/idempotency without weakening source checks or contacting GitHub. An intermediate attempt using demo generation on a local repository was correctly rejected by the existing sample-only policy; the final fixture seeds the proposal directly.
+- Production passed the read-only schema check unchanged. Preview was confirmed at `004` without `repository_snapshot`; the existing additive migration `005` was applied using its Preview migration configuration. Preview then passed the same readiness check. No account credentials were changed, no provider calls were made, and application code was not redeployed in this checkpoint.
+
+New code: `backend/app/db/readiness.py`, `scripts/check_cloud.py`, `scripts/test_cloud.py`, `backend/tests/test_readiness.py`, `backend/tests/test_cloud_test_runner.py`. Updated health routing, the PostgreSQL recovery fixture, API/deployment instructions and test instructions. The pre-existing November 12 production-repair notes were preserved.
+
+### Executed verification
+
+| Check | Result |
+| --- | --- |
+| `backend/.venv-cloud/bin/python scripts/test_cloud.py --docker-context colima-autorca` | **256 passed, zero skipped**, Python 3.13 with real disposable PostgreSQL; test container removed. |
+| `PYTHONPATH=backend backend/.venv/bin/pytest backend/tests/test_readiness.py backend/tests/test_cloud_test_runner.py -q` | **13 passed**, local Python 3.10/SQLite compatibility. |
+| Read-only `scripts/check_cloud.py` against Production | Passed; no schema or record changes. |
+| Preview migration `004` → `005`, then read-only `scripts/check_cloud.py` | Migration completed; readiness passed. |
+| `git diff --check` | Passed. |
+
+The final full suite supersedes the earlier cloud SDK/PostgreSQL skips for this checkout. It exercises real PostgreSQL locking, transfer and recovery; provider transports remain mocked. Two existing Starlette/LangGraph deprecation warnings remain. The first run had 250 passes and the outdated recovery fixture failure; an intermediate run had 255 passes and the sample-only demo fixture failure. Both test databases were cleaned up. No frontend code changed, so browser/build checks were not repeated.
+
+### Scope and remaining work
+
+The new application code still needs deployment and hosted HTTP verification. The direct readiness checks do not establish end-to-end hosted investigation behavior. The sixth checkpoint's optional expansion work remains: Vercel JSON-contract execution, other interfaces/languages, semantic citation support, confidence calibration and broader live-model evaluation. No new accuracy claim is made.

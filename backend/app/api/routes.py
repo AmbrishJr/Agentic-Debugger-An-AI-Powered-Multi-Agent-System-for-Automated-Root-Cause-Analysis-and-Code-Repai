@@ -1,11 +1,13 @@
 import asyncio
 import json
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy import select, update, func, or_, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import get_db, SessionLocal, serialize_write
+from app.db.readiness import check_database_schema, DatabaseNotReady
 from app.models.records import Incident, Investigation, ProposedFix, AgentExecution, IncidentMemory, AppPreference, ValidationRun, Job, IncidentEvent, now, uid
 from app.schemas.contracts import IncidentCreate, Decision, Preferences, PullRequestRequest, ValidationPlanRequest, ValidationAuthorization
 from app.services.security import redact, list_files, read_source, digest, incident_source
@@ -64,8 +66,16 @@ def details(db, incident_id):
 
 @router.get('/health')
 def health(db: Session = Depends(get_db)):
-    db.execute(text('SELECT 1'))
-    return {'status': 'ok', 'service': 'AutoRCA-X', 'live_available': llm.available(preferences(db)['provider'])}
+    try:
+        check_database_schema(db)
+        live_available = llm.available(preferences(db)['provider'])
+    except (DatabaseNotReady, SQLAlchemyError):
+        return JSONResponse({'status': 'unavailable', 'service': 'AutoRCA-X',
+                             'error': {'code': 'database_not_ready',
+                                       'message': 'Database readiness failed. Check connectivity and apply the release migrations.'}},
+                            status_code=503, headers={'Cache-Control': 'no-store'})
+    return JSONResponse({'status': 'ok', 'service': 'AutoRCA-X', 'live_available': live_available,
+                         'schema_ready': True}, headers={'Cache-Control': 'no-store'})
 
 
 @router.get('/samples')

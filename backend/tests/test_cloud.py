@@ -316,15 +316,26 @@ def test_failed_cleanup_can_be_retried_without_executing_tests(client, monkeypat
     assert client.post(path, json={}).status_code == 409
 
 
-def test_postgres_recovers_interrupted_pr_without_duplicate_publication(client, monkeypatch):
+def test_postgres_recovers_interrupted_pr_without_duplicate_publication(client, monkeypatch, tmp_path):
     if engine.dialect.name != 'postgresql':
         pytest.skip('Requires disposable PostgreSQL')
     from app.api import routes
-    incident, data = investigate(client)
-    assert client.post(f'/api/incidents/{incident}/approve', json={}).status_code == 200
+    from app.models.records import Investigation
+    from app.services.sample import BUGGY, FIXED
+    from app.services.security import digest
+    # Seed a reviewed proposal against a real pinned local source. This tests
+    # publication recovery, not model generation (demo fixes are sample-only).
+    (tmp_path / 'checkout.py').write_text(BUGGY)
+    monkeypatch.setattr(settings, 'repository_root', str(tmp_path))
+    incident = create(client, repository='local', selected_files=['checkout.py'])
     with SessionLocal() as db:
-        db.get(Incident, incident).repository = 'github'
-        db.get(ProposedFix, data['fix']['id']).pr_status = 'creating'
+        db.get(Incident, incident).status = 'approved'
+        db.add(Investigation(incident_id=incident, evidence_references=[
+            {'kind': 'source', 'path': 'checkout.py', 'sha256': digest(BUGGY)}]))
+        db.add(ProposedFix(incident_id=incident, path='checkout.py', original_code=BUGGY,
+                          proposed_code=FIXED, original_sha256=digest(BUGGY), proposed_patch='synthetic test proposal',
+                          explanation='Publication recovery fixture', validation_result={'status': 'partial'},
+                          approval_status='approved', pr_status='creating'))
         db.commit()
     monkeypatch.setattr(settings, 'github_token', 'test-only')
     monkeypatch.setattr(settings, 'github_repository', 'owner/disposable')
