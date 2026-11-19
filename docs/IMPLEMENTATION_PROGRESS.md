@@ -353,4 +353,4 @@ The final full suite supersedes the earlier cloud SDK/PostgreSQL skips for this 
 
 ### Scope and remaining work
 
-The new application code still needs deployment and hosted HTTP verification. The direct readiness checks do not establish end-to-end hosted investigation behavior. The sixth checkpoint's optional expansion work remains: Vercel JSON-contract execution, other interfaces/languages, semantic citation support, confidence calibration and broader live-model evaluation. No new accuracy claim is made.
+Deployment and hosted HTTP verification were pending at this checkpoint and subsequently completed for release `d6acc86`; see the [November 16 hosted verification](verification.md). Preview completed the seven-agent demo, review and approval. The owner subsequently confirmed that Production sign-in works with the current password, completing the outstanding manual deployment check. The sixth checkpoint's optional expansion work remains: Vercel JSON-contract execution, other interfaces/languages, semantic citation support, confidence calibration and broader live-model evaluation. No new accuracy claim is made.

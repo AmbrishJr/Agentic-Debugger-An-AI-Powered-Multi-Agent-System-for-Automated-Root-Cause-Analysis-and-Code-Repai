@@ -1,0 +1,97 @@
+{
+  "date": "2026-11-16",
+  "commit": "d6acc864819329816f3d281093a0e3569c73feda",
+  "production_frontend": "https://autorca-frontend.vercel.app",
+  "preview_frontend": "https://autorca-preview-ambrish.vercel.app",
+  "deployments": [
+    {
+      "project": "autorca-backend",
+      "environment": "production",
+      "id": "dpl_3qtBiVEMJftsszxU9KETNUREHhSq",
+      "state": "READY",
+      "url": "autorca-backend-kb3berymh-ambrishsaids2023-5783s-projects.vercel.app"
+    },
+    {
+      "project": "autorca-frontend",
+      "environment": "production",
+      "id": "dpl_2WSB62oQzsweow2sDTiPfNa73wMq",
+      "state": "READY",
+      "url": "autorca-frontend-k9uaxfmir-ambrishsaids2023-5783s-projects.vercel.app"
+    },
+    {
+      "project": "autorca-backend",
+      "environment": "preview",
+      "id": "dpl_4W5PQBW2JwvNWSjZ58JUSbCFpNeK",
+      "state": "READY",
+      "url": "autorca-backend-9j7c4pwvu-ambrishsaids2023-5783s-projects.vercel.app"
+    },
+    {
+      "project": "autorca-frontend",
+      "environment": "preview",
+      "id": "dpl_9jLmbVdE8mG1BH1qCDQ6Zsxi9gyg",
+      "state": "READY",
+      "url": "autorca-frontend-jbr0dpcc6-ambrishsaids2023-5783s-projects.vercel.app"
+    }
+  ],
+  "production_public_checks": {
+    "/": {
+      "status": 200
+    },
+    "/api/health": {
+      "status": 200,
+      "payload": {
+        "status": "ok",
+        "service": "AutoRCA-X",
+        "live_available": true,
+        "schema_ready": true
+      }
+    },
+    "/api/auth/me": {
+      "status": 200,
+      "initialized": true
+    },
+    "/api/incidents": {
+      "status": 401
+    },
+    "direct_backend_without_token": {
+      "status": 401
+    }
+  },
+  "preview_verification": {
+    "environment": "preview",
+    "checks": [
+      "Frontend page",
+      "Release schema readiness",
+      "Health is not cached",
+      "Unauthenticated data blocked",
+      "Administrator sign-in",
+      "Secure session cookie",
+      "Dashboard access",
+      "Durable cloud workflow configured",
+      "Incident history access",
+      "GitHub source access",
+      "Source snapshot captured",
+      "Seven-agent hosted investigation",
+      "Review page",
+      "Repair outcome in exported report",
+      "Human review approval",
+      "Session logout"
+    ],
+    "status": "passed",
+    "demo_incident_id": "2f27aa3e-aa23-4608-bfc1-cb32b2f4d2c3",
+    "temporary_account_removed": true
+  },
+  "production_sign_in": "Owner confirmed Production sign-in works with the current password. The older saved local credential did not match; no password reset performed.",
+  "runtime_errors": {
+    "environment": "production",
+    "window_minutes": 15,
+    "backend_records": 0,
+    "frontend_records": 0,
+    "query": "level:error",
+    "has_more": false
+  },
+  "limits": [
+    "No live AI call, new Sandbox execution or PR publication in this release check.",
+    "Full investigation and approval verified in Preview; Production checks covered public health and authentication boundaries."
+  ]
+}

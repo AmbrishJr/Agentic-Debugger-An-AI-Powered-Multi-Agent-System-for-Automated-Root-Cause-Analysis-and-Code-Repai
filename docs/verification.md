@@ -1,5 +1,16 @@
 # Verification record
 
+## Hosted readiness release — November 16, 2026 (Asia/Kolkata)
+
+Commit `d6acc864819329816f3d281093a0e3569c73feda` is deployed to both projects in Production and Preview; all four builds are Ready. The main-branch Git integration completed Production builds during deployment checks. The existing `vercel-preview` branch was advanced to the same commit and both stable Preview aliases were assigned to its new builds. [Sanitized release report](vercel-release-2026-11-16.json).
+
+- Production frontend and `/api/health` returned HTTP 200; health reports `schema_ready: true` and `Cache-Control: no-store`. The workspace is initialized. Unauthenticated incident access and direct backend access without the shared API token returned HTTP 401.
+- Preview passed administrator sign-in, secure cookies, dashboard/history access, real GitHub source reads, source-snapshot capture, all seven hosted demo investigation steps, report export, review approval and logout. The previously authorized temporary administrator and its sessions were removed. The clearly labeled synthetic incident is retained in Preview as verification evidence.
+- Both Production projects returned zero `level:error` runtime records in the queried 15-minute window, with no additional pages or excluded intervals. This is a bounded log check, not a claim about all historical logs.
+- Production sign-in with the older saved local password was rejected. A read-only check confirmed the existing account is active and that saved password no longer matches its hash. The owner subsequently confirmed that Production sign-in works with the current password, completing the manual sign-in check. This is owner-confirmed verification; no password reset or Production test account was created.
+
+The release followed **256 passing backend tests with zero skips** on disposable PostgreSQL/Python 3.13. No additional live AI request, Sandbox execution or PR publication was performed during this deployment check. Authenticated investigation/approval was tested in Preview; Production verification covered public readiness, authentication boundaries and owner-confirmed sign-in.
+
 ## Hosted Vercel release — November 6, 2026 (Asia/Kolkata)
 
 Production frontend: [autorca-frontend.vercel.app](https://autorca-frontend.vercel.app). Backend: [autorca-backend.vercel.app](https://autorca-backend.vercel.app); direct requests require the server API token. Both final production builds reached Ready. [Deployment report](vercel-deployment.json).
